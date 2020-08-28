@@ -17,6 +17,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #include <vsg/core/Export.h>
 #include <vsg/core/ref_ptr.h>
+#include <vsg/core/type_name.h>
 
 namespace vsg
 {
@@ -25,11 +26,16 @@ namespace vsg
     class Auxiliary;
     class Visitor;
     class ConstVisitor;
-    class DispatchTraversal;
-    class CullTraversal;
+    class RecordTraversal;
     class Allocator;
     class Input;
     class Output;
+    class Object;
+
+    template<typename T>
+    constexpr bool has_read_write() { return false; }
+
+    VSG_type_name(vsg::Object);
 
     class VSG_DECLSPEC Object
     {
@@ -38,13 +44,23 @@ namespace vsg
 
         explicit Object(Allocator* allocator);
 
-        Object(const Object&) = delete;
-        Object& operator=(const Object&) = delete;
+        Object(const Object&);
+        Object& operator=(const Object&);
 
         //static ref_ptr<Object> create(Allocator* allocator=nullptr);
 
         virtual std::size_t sizeofObject() const noexcept { return sizeof(Object); }
-        virtual const char* className() const noexcept { return "vsg::Object"; }
+        virtual const char* className() const noexcept { return type_name<Object>(); }
+
+        /// return the std::type_info of this Object
+        virtual const std::type_info& type_info() const noexcept { return typeid(Object); }
+        virtual bool is_compatible(const std::type_info& type) const noexcept { return typeid(Object) == type; }
+
+        template<class T>
+        T* cast() { return is_compatible(typeid(T)) ? static_cast<T*>(this) : nullptr; }
+
+        template<class T>
+        const T* cast() const { return is_compatible(typeid(T)) ? static_cast<const T*>(this) : nullptr; }
 
         virtual void accept(Visitor& visitor);
         virtual void traverse(Visitor&) {}
@@ -52,11 +68,8 @@ namespace vsg
         virtual void accept(ConstVisitor& visitor) const;
         virtual void traverse(ConstVisitor&) const {}
 
-        virtual void accept(DispatchTraversal& visitor) const;
-        virtual void traverse(DispatchTraversal&) const {}
-
-        virtual void accept(CullTraversal& visitor) const;
-        virtual void traverse(CullTraversal&) const {}
+        virtual void accept(RecordTraversal& visitor) const;
+        virtual void traverse(RecordTraversal&) const {}
 
         virtual void read(Input& input);
         virtual void write(Output& output) const;
@@ -70,17 +83,37 @@ namespace vsg
         inline void unref_nodelete() const noexcept { _referenceCount.fetch_sub(1, std::memory_order_seq_cst); }
         inline unsigned int referenceCount() const noexcept { return _referenceCount.load(); }
 
-        // meta data access methods
+        /// meta data access methods
+        /// wraps the value with a vsg::Value<T> object and then assigns via setObject(key, vsg::Value<T>)
         template<typename T>
         void setValue(const std::string& key, const T& value);
+
+        /// specialization of setValue to handle passing c strings
         void setValue(const std::string& key, const char* value) { setValue(key, value ? std::string(value) : std::string()); }
 
+        /// get specified value type, return false if value associated with key is not assigned or is not the correct type
         template<typename T>
         bool getValue(const std::string& key, T& value) const;
 
+        /// assign an Object associated with key
         void setObject(const std::string& key, Object* object);
+
+        /// get Object associated with key, return nullptr if no object associated with key has been assigned
         Object* getObject(const std::string& key);
+
+        /// get const Object associated with key, return nullptr if no object associated with key has been assigned
         const Object* getObject(const std::string& key) const;
+
+        /// get object of specified type associated with key, return nullptr if no object associated with key has been assigned
+        template<class T>
+        T* getObject(const std::string& key) { return dynamic_cast<T*>(getObject(key)); }
+
+        /// get const object of specified type associated with key, return nullptr if no object associated with key has been assigned
+        template<class T>
+        const T* getObject(const std::string& key) const { return dynamic_cast<const T*>(getObject(key)); }
+
+        /// remove meta object or value associated with key
+        void removeObject(const std::string& key);
 
         // Auxiliary object access methods, the optional Auxiliary is used to store meta data and links to Allocator
         Auxiliary* getOrCreateUniqueAuxiliary();
@@ -104,5 +137,20 @@ namespace vsg
 
         Auxiliary* _auxiliary;
     };
+
+    template<class T, class R>
+    T* cast(const ref_ptr<R>& object)
+    {
+        return object ? object->template cast<T>() : nullptr;
+    }
+
+    template<class T, class R>
+    T* cast(R* object)
+    {
+        return object ? object->template cast<T>() : nullptr;
+    }
+
+    template<>
+    constexpr bool has_read_write<Object>() { return true; }
 
 } // namespace vsg

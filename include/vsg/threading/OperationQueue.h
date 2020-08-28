@@ -12,65 +12,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-#include <vsg/core/Inherit.h>
+#include <vsg/threading/ActivityStatus.h>
+#include <vsg/threading/Latch.h>
 
-#include <condition_variable>
 #include <list>
 
 namespace vsg
 {
-
-    struct Active : public Object
-    {
-        Active() :
-            active(true) {}
-
-        std::atomic_bool active;
-
-        explicit operator bool() const noexcept { return active; }
-
-    protected:
-        virtual ~Active() {}
-    };
-
-    struct Latch : public Object
-    {
-        Latch(uint32_t num) :
-            count(num) {}
-
-        void count_down()
-        {
-            --count;
-            if (is_ready())
-            {
-                std::unique_lock lock(_mutex);
-                cv.notify_all();
-            }
-        }
-
-        bool is_ready() const
-        {
-            return (count == 0);
-        }
-
-        void wait()
-        {
-            // use while loop to return immediate when latch already released
-            // and to handle cases where the condition variable releases spuriously.
-            while (count != 0)
-            {
-                std::unique_lock lock(_mutex);
-                cv.wait(lock);
-            }
-        }
-
-        std::atomic_uint count;
-        std::mutex _mutex;
-        std::condition_variable cv;
-
-    protected:
-        virtual ~Latch() {}
-    };
 
     struct Operation : public Object
     {
@@ -80,16 +28,14 @@ namespace vsg
     class VSG_DECLSPEC OperationQueue : public Inherit<Object, OperationQueue>
     {
     public:
-        OperationQueue(ref_ptr<Active> in_active);
+        OperationQueue(ref_ptr<ActivityStatus> status);
 
-        std::mutex _mutex;
-        std::condition_variable _cv;
-        std::list<ref_ptr<Operation>> _queue;
-        ref_ptr<Active> _active;
+        ActivityStatus* getStatus() { return _status; }
+        const ActivityStatus* getStatus() const { return _status; }
 
         void add(ref_ptr<Operation> operation)
         {
-            std::unique_lock lock(_mutex);
+            std::scoped_lock lock(_mutex);
             _queue.emplace_back(operation);
             _cv.notify_one();
         }
@@ -98,7 +44,7 @@ namespace vsg
         void add(Iterator begin, Iterator end)
         {
             size_t numAdditions = 0;
-            std::unique_lock lock(_mutex);
+            std::scoped_lock lock(_mutex);
             for (auto itr = begin; itr != end; ++itr)
             {
                 _queue.emplace_back(*itr);
@@ -113,7 +59,13 @@ namespace vsg
 
         ref_ptr<Operation> take();
 
-        ref_ptr<Operation> take_when_avilable();
+        ref_ptr<Operation> take_when_available();
+
+    protected:
+        std::mutex _mutex;
+        std::condition_variable _cv;
+        std::list<ref_ptr<Operation>> _queue;
+        ref_ptr<ActivityStatus> _status;
     };
     VSG_type_name(vsg::OperationQueue)
 

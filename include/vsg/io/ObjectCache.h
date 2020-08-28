@@ -26,13 +26,13 @@ namespace vsg
         void setDefaultUnusedDuration(double duration) { _defaultUnusedDuration = duration; }
         double getDefaultUnusedDuration() const { return _defaultUnusedDuration; }
 
-        /// remove any objects that no longer have an external referneces from cache.that are are haven't been referenced within their expiry time
+        /// remove any objects that no longer have an external references from cache.that are haven't been referenced within their expiry time
         void removeExpiredUnusedObjects();
 
         /// remove all objects from cache
         void clear();
 
-        /// check if a cache entry contains an entry for specificied filename.
+        /// check if a cache entry contains an entry for specified filename.
         bool contains(const Path& filename, ref_ptr<const Options> options = {});
 
         /// get entry from ObjectCache that matches filename and option. return null when no object matches.
@@ -47,14 +47,21 @@ namespace vsg
         /// remove entry matching object.
         void remove(ref_ptr<Object> object);
 
-    protected:
         struct ObjectTimepoint
         {
+            std::mutex mutex;
             ref_ptr<Object> object;
             double unusedDurationBeforeExpiry = 0.0;
             clock::time_point lastUsedTimepoint;
         };
 
+        inline ObjectTimepoint& getObjectTimepoint(const Path& filename, ref_ptr<const Options> options = {})
+        {
+            std::scoped_lock<std::mutex> guard(_mutex);
+            return _objectCacheMap[FilenameOption(filename, options)];
+        }
+
+    protected:
         using FilenameOption = std::pair<Path, ref_ptr<const Options>>;
         using ObjectCacheMap = std::map<FilenameOption, ObjectTimepoint>;
 

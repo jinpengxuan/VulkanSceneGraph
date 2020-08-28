@@ -13,7 +13,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 </editor-fold> */
 
 #include <vsg/vk/Buffer.h>
-#include <vsg/vk/Command.h>
 
 #include <cstring>
 
@@ -23,16 +22,16 @@ namespace vsg
     class Context;
     class CommandBuffer;
 
-    class BufferData
+    class VSG_DECLSPEC BufferData
     {
     public:
         BufferData() = default;
 
-        BufferData(Buffer* buffer, VkDeviceSize offset, VkDeviceSize range, Data* data = nullptr) :
-            _buffer(buffer),
-            _offset(offset),
-            _range(range),
-            _data(data) {}
+        BufferData(Buffer* in_buffer, VkDeviceSize in_offset, VkDeviceSize in_range, Data* in_data = nullptr) :
+            buffer(in_buffer),
+            offset(in_offset),
+            range(in_range),
+            data(in_data) {}
 
         BufferData(const BufferData&) = default;
 
@@ -40,20 +39,25 @@ namespace vsg
 
         void release()
         {
-            if (_buffer && _range > 0) _buffer->release(_offset, _range);
-            _buffer = 0;
-            _offset = 0;
-            _range = 0;
+            if (buffer)
+            {
+                buffer->release(offset, range);
+            }
+
+            buffer = 0;
+            offset = 0;
+            range = 0;
         }
 
-        ref_ptr<Buffer> _buffer;
-        VkDeviceSize _offset = 0;
-        VkDeviceSize _range = 0;
-        ref_ptr<Data> _data;
+        explicit operator bool() const { return buffer.valid() && data.valid() && range != 0; }
+
+        ref_ptr<Buffer> buffer;
+        VkDeviceSize offset = 0;
+        VkDeviceSize range = 0;
+        ref_ptr<Data> data;
     };
 
     using BufferDataList = std::vector<BufferData>;
-    using DataList = std::vector<ref_ptr<Data>>;
 
     BufferDataList createBufferAndTransferData(Context& context, const DataList& dataList, VkBufferUsageFlags usage, VkSharingMode sharingMode);
 

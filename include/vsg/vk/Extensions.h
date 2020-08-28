@@ -12,6 +12,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/vk/Device.h>
 #include <vsg/vk/Instance.h>
 
 namespace vsg
@@ -23,5 +24,25 @@ namespace vsg
     extern VSG_DECLSPEC bool isExtensionSupported(const char* extensionName);
 
     extern VSG_DECLSPEC bool isExtensionListSupported(const Names& extensionList);
+
+    // TODO need to reorginize so that the Device "has a" extension strucuture and avoid the usage of static container
+    class VSG_DECLSPEC Extensions : public Object
+    {
+    public:
+        static Extensions* Get(Device* device, bool createIfNotInitalized);
+
+        Extensions(Device* device);
+
+        // VK_NV_ray_tracing
+        PFN_vkCreateAccelerationStructureNV vkCreateAccelerationStructureNV;
+        PFN_vkDestroyAccelerationStructureNV vkDestroyAccelerationStructureNV;
+        PFN_vkBindAccelerationStructureMemoryNV vkBindAccelerationStructureMemoryNV;
+        PFN_vkGetAccelerationStructureHandleNV vkGetAccelerationStructureHandleNV;
+        PFN_vkGetAccelerationStructureMemoryRequirementsNV vkGetAccelerationStructureMemoryRequirementsNV;
+        PFN_vkCmdBuildAccelerationStructureNV vkCmdBuildAccelerationStructureNV;
+        PFN_vkCreateRayTracingPipelinesNV vkCreateRayTracingPipelinesNV;
+        PFN_vkGetRayTracingShaderGroupHandlesNV vkGetRayTracingShaderGroupHandlesNV;
+        PFN_vkCmdTraceRaysNV vkCmdTraceRaysNV;
+    };
 
 } // namespace vsg

@@ -12,30 +12,36 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-#include <vsg/core/ConstVisitor.h>
 #include <vsg/maths/box.h>
+#include <vsg/traversals/ArrayState.h>
 
 namespace vsg
 {
 
-    class VSG_DECLSPEC ComputeBounds : public vsg::ConstVisitor
+    class VSG_DECLSPEC ComputeBounds : public Inherit<ConstVisitor, ComputeBounds>
     {
     public:
         ComputeBounds();
 
-        vsg::dbox bounds;
+        dbox bounds;
 
-        using MatrixStack = std::vector<vsg::mat4>;
+        using ArrayStateStack = std::vector<ArrayState>;
+        ArrayStateStack arrayStateStack;
+
+        using MatrixStack = std::vector<mat4>;
         MatrixStack matrixStack;
 
-        void apply(const vsg::Node& node);
-        void apply(const vsg::Group& group);
-        void apply(const vsg::Commands& commands);
-        void apply(const vsg::MatrixTransform& transform);
-        void apply(const vsg::Geometry& geometry);
-        void apply(const vsg::VertexIndexDraw& vid);
-        void apply(const vsg::BindVertexBuffers& bvb);
-        void apply(const vsg::vec3Array& vertices);
+        void apply(const Node& node) override;
+        void apply(const StateGroup& stategroup) override;
+        void apply(const MatrixTransform& transform) override;
+        void apply(const Geometry& geometry) override;
+        void apply(const VertexIndexDraw& vid) override;
+        void apply(const BindVertexBuffers& bvb) override;
+        void apply(const StateCommand& statecommand) override;
+
+        void apply(uint32_t firstBinding, const DataList& arrays);
+        void apply(const vec3Array& vertices) override;
     };
+    VSG_type_name(vsg::ComputeBounds);
 
 } // namespace vsg

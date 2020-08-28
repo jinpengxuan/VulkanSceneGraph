@@ -13,6 +13,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 </editor-fold> */
 
 #include <vsg/core/Object.h>
+#include <vsg/core/type_name.h>
 
 #include <functional>
 #include <map>
@@ -33,8 +34,21 @@ namespace vsg
         CreateMap& getCreateMap() { return _createMap; }
         const CreateMap& getCreateMap() const { return _createMap; }
 
+        /// return the ObjectFactory singleton instance
+        static ref_ptr<ObjectFactory>& instance();
+
     protected:
         CreateMap _createMap;
+    };
+
+    // Helper tempalte class for registering the ability to create a Object of specified T on deamnd.
+    template<class T>
+    struct RegisterWithObjectFactoryProxy
+    {
+        RegisterWithObjectFactoryProxy()
+        {
+            ObjectFactory::instance()->getCreateMap()[type_name<T>()] = []() { return T::create(); };
+        }
     };
 
 } // namespace vsg

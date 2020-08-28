@@ -10,17 +10,30 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/core/Exception.h>
+#include <vsg/io/Options.h>
 #include <vsg/vk/CommandBuffer.h>
 
 using namespace vsg;
 
-CommandBuffer::CommandBuffer(Device* device, CommandPool* commandPool, VkCommandBuffer commandBuffer, VkCommandBufferUsageFlags flags) :
-    _commandBuffer(commandBuffer),
-    _flags(flags),
+CommandBuffer::CommandBuffer(Device* device, CommandPool* commandPool, VkCommandBufferLevel level) :
+    deviceID(device->deviceID),
+    scratchMemory(ScratchMemory::create(4096)),
+    _level(level),
     _device(device),
     _commandPool(commandPool),
     _currentPipelineLayout(0)
 {
+    VkCommandBufferAllocateInfo allocateInfo = {};
+    allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocateInfo.commandPool = *commandPool;
+    allocateInfo.level = level;
+    allocateInfo.commandBufferCount = 1;
+
+    if (VkResult result = vkAllocateCommandBuffers(*device, &allocateInfo, &_commandBuffer); result != VK_SUCCESS)
+    {
+        throw Exception{"Error: Failed to create command buffers.", result};
+    }
 }
 
 CommandBuffer::~CommandBuffer()
@@ -28,75 +41,5 @@ CommandBuffer::~CommandBuffer()
     if (_commandBuffer)
     {
         vkFreeCommandBuffers((*_device), (*_commandPool), 1, &_commandBuffer);
-    }
-}
-
-CommandBuffer::Result CommandBuffer::create(Device* device, CommandPool* commandPool, VkCommandBufferUsageFlags flags)
-{
-    if (!device || !commandPool)
-    {
-        return Result("Error: vsg::CommandBuffer::create(...) failed to create command buffers, undefined Device or CommandPool.", VK_ERROR_INVALID_EXTERNAL_HANDLE);
-    }
-
-    VkCommandBufferAllocateInfo allocateInfo = {};
-    allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocateInfo.commandPool = *commandPool;
-    allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocateInfo.commandBufferCount = 1;
-
-    VkCommandBuffer buffer;
-    VkResult result = vkAllocateCommandBuffers(*device, &allocateInfo, &buffer);
-    if (result == VK_SUCCESS)
-    {
-        return Result(new CommandBuffer(device, commandPool, buffer, flags));
-    }
-    else
-    {
-        return Result("Error: Failed to create command buffers.", result);
-    }
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////////
-//
-// CommandBuffers
-//
-CommandBuffers::CommandBuffers(Device* device, CommandPool* commandPool, const Buffers& buffers) :
-    _device(device),
-    _commandPool(commandPool),
-    _buffers(buffers)
-{
-}
-
-CommandBuffers::Result CommandBuffers::create(Device* device, CommandPool* commandPool, size_t size)
-{
-    if (!device || !commandPool)
-    {
-        return Result("Error: vsg::CommandBuffers::create(...) failed to create command buffers, undefined Device or CommandPool.", VK_ERROR_INVALID_EXTERNAL_HANDLE);
-    }
-
-    Buffers buffers(size);
-
-    VkCommandBufferAllocateInfo allocateInfo = {};
-    allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocateInfo.commandPool = *commandPool;
-    allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocateInfo.commandBufferCount = (uint32_t)buffers.size();
-
-    VkResult result = vkAllocateCommandBuffers(*device, &allocateInfo, buffers.data());
-    if (result == VK_SUCCESS)
-    {
-        return Result(new CommandBuffers(device, commandPool, buffers));
-    }
-    else
-    {
-        return Result("Error: Failed to create command buffers.", result);
-    }
-}
-
-CommandBuffers::~CommandBuffers()
-{
-    if (!_buffers.empty())
-    {
-        vkFreeCommandBuffers(*_device, *_commandPool, static_cast<uint32_t>(_buffers.size()), _buffers.data());
     }
 }

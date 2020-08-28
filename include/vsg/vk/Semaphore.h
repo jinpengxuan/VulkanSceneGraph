@@ -19,12 +19,17 @@ namespace vsg
     class VSG_DECLSPEC Semaphore : public Inherit<Object, Semaphore>
     {
     public:
-        Semaphore(VkSemaphore Semaphore, Device* device, AllocationCallbacks* allocator = nullptr);
-
-        using Result = vsg::Result<Semaphore, VkResult, VK_SUCCESS>;
-        static Result create(Device* device, AllocationCallbacks* allocator = nullptr);
+        Semaphore(Device* device, VkPipelineStageFlags pipelineStageFlags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, void* pNextCreateInfo = nullptr);
 
         operator VkSemaphore() const { return _semaphore; }
+        VkSemaphore vk() const { return _semaphore; }
+
+        VkPipelineStageFlags& pipelineStageFlags() { return _pipelineStageFlags; }
+        const VkPipelineStageFlags& pipelineStageFlags() const { return _pipelineStageFlags; }
+
+        std::atomic_uint& numDependentSubmissions() { return _numDependentSubmissions; }
+
+        const VkSemaphore* data() const { return &_semaphore; }
 
         Device* getDevice() { return _device; }
         const Device* getDevice() const { return _device; }
@@ -33,8 +38,12 @@ namespace vsg
         virtual ~Semaphore();
 
         VkSemaphore _semaphore;
+        VkPipelineStageFlags _pipelineStageFlags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+        std::atomic_uint _numDependentSubmissions{0};
         ref_ptr<Device> _device;
-        ref_ptr<AllocationCallbacks> _allocator;
     };
+    VSG_type_name(vsg::Semaphore);
+
+    using Semaphores = std::vector<ref_ptr<Semaphore>>;
 
 } // namespace vsg

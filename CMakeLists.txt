@@ -1,13 +1,14 @@
 cmake_minimum_required(VERSION 3.7)
 
 project(VSG
-    VERSION 0.0.0
-    DESCRIPTION "Vulkan/VkSceneGraph Prototype library"
+    VERSION 0.0.2
+    DESCRIPTION "VulkanSceneGraph library"
     LANGUAGES CXX
 )
 set(VSG_SOVERSION 0)
 
 # create the version header
+set(VSG_MAX_DEVICES 1 CACHE STRING "Set maximum number of vk/vsg::Device that are supported.")
 set(VSG_VERSION_HEADER "${PROJECT_BINARY_DIR}/include/vsg/core/Version.h")
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/vsg/core/Version.h.in" "${VSG_VERSION_HEADER}")
 
@@ -50,6 +51,16 @@ endif()
 
 set(VSG_WARNING_FLAGS ${VSG_WARNING_FLAGS} CACHE STRING "Compiler flags to use." FORCE)
 add_compile_options(${VSG_WARNING_FLAGS})
+
+if (MSVC)
+    # Increase Number of Sections in .Obj file
+    add_compile_options(/bigobj)
+endif()
+
+if (VULKAN_SDK)
+    message("Within VulkanSceneGraph cmake, setting VULKAN_SDK env var to " ${VULKAN_SDK})
+    set(ENV{VULKAN_SDK} ${VULKAN_SDK})
+endif()
 
 
 find_package(Vulkan)
@@ -118,7 +129,7 @@ if (CPPCHECK)
     add_custom_target(cppcheck
         COMMAND ${CPPCHECK} -j ${CPU_CORES} --quiet --enable=style --language=c++ ${CPPCHECK_EXTRA_OPTIONS} ${CPPCHECK_SUPPRESION_LIST} ${PATH_TO_SOURCE}include/vsg/*/*.h ${PATH_TO_SOURCE}src/vsg/*/*.cpp -I ${PATH_TO_SOURCE}include/
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        COMMENT "Static code analsysi using cppcheck"
+        COMMENT "Static code analysis using cppcheck"
     )
 endif()
 

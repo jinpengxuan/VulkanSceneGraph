@@ -12,6 +12,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #include <vsg/core/Data.h>
 #include <vsg/io/Input.h>
+#include <vsg/io/Options.h>
 #include <vsg/io/Output.h>
 
 using namespace vsg;
@@ -19,21 +20,34 @@ using namespace vsg;
 void Data::read(Input& input)
 {
     Object::read(input);
-    _format = static_cast<VkFormat>(input.readValue<std::int32_t>("Format"));
 
-    if (input.matchPropertyName("Layout"))
+    if (input.version_greater_equal(0, 0, 1))
     {
-        input.read(4, &_layout.maxNumMipmaps);
+        uint32_t format = 0;
+        input.read("Layout", format, _layout.stride, _layout.maxNumMipmaps, _layout.blockWidth, _layout.blockHeight, _layout.blockDepth, _layout.origin);
+        _layout.format = VkFormat(format);
+    }
+    else
+    {
+        _layout.format = static_cast<VkFormat>(input.readValue<std::int32_t>("Format"));
+        input.read("Layout", _layout.maxNumMipmaps, _layout.blockWidth, _layout.blockHeight, _layout.blockDepth, _layout.origin);
     }
 }
 
 void Data::write(Output& output) const
 {
     Object::write(output);
-    output.writeValue<std::int32_t>("Format", _format);
 
-    output.writePropertyName("Layout");
-    output.write(4, &_layout.maxNumMipmaps);
+    if (output.version_greater_equal(0, 0, 1))
+    {
+        uint32_t format = _layout.format;
+        output.write("Layout", format, _layout.stride, _layout.maxNumMipmaps, _layout.blockWidth, _layout.blockHeight, _layout.blockDepth, _layout.origin);
+    }
+    else
+    {
+        output.writeValue<std::int32_t>("Format", _layout.format);
+        output.write("Layout", _layout.maxNumMipmaps, _layout.blockWidth, _layout.blockHeight, _layout.blockDepth, _layout.origin);
+    }
 }
 
 Data::MipmapOffsets Data::computeMipmapOffsets() const

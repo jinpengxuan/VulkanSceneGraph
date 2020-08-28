@@ -12,6 +12,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/core/Export.h>
+#include <vsg/maths/mat3.h>
 #include <vsg/maths/mat4.h>
 #include <vsg/maths/vec3.h>
 
@@ -36,9 +38,9 @@ namespace vsg
         const T c = std::cos(angle_radians);
         const T s = std::sin(angle_radians);
         const T one_minus_c = 1 - c;
-        return t_mat4<T>(x * x * one_minus_c + c, x * y * one_minus_c - z * s, x * z * one_minus_c + y * s, 0,
-                         y * x * one_minus_c + z * s, y * y * one_minus_c + c, y * z * one_minus_c - x * s, 0,
-                         x * z * one_minus_c - y * s, y * z * one_minus_c + x * s, z * z * one_minus_c + c, 0,
+        return t_mat4<T>(x * x * one_minus_c + c, y * x * one_minus_c + z * s, x * z * one_minus_c - y * s, 0,
+                         x * y * one_minus_c - z * s, y * y * one_minus_c + c, y * z * one_minus_c + x * s, 0,
+                         x * z * one_minus_c + y * s, y * z * one_minus_c - x * s, z * z * one_minus_c + c, 0,
                          0, 0, 0, 1);
     }
 
@@ -51,10 +53,10 @@ namespace vsg
     template<typename T>
     constexpr t_mat4<T> translate(T x, T y, T z)
     {
-        return t_mat4<T>(1, 0, 0, x,
-                         0, 1, 0, y,
-                         0, 0, 1, z,
-                         0, 0, 0, 1);
+        return t_mat4<T>(1, 0, 0, 0,
+                         0, 1, 0, 0,
+                         0, 0, 1, 0,
+                         x, y, z, 1);
     }
 
     template<typename T>
@@ -81,10 +83,10 @@ namespace vsg
     template<typename T>
     constexpr t_mat4<T> transpose(const t_mat4<T>& m)
     {
-        return t_mat4<T>(m[0][0], m[0][1], m[0][2], m[0][3],
-                         m[1][0], m[1][1], m[1][2], m[1][3],
-                         m[2][0], m[2][1], m[2][2], m[2][3],
-                         m[3][0], m[3][1], m[3][2], m[3][3]);
+        return t_mat4<T>(m[0][0], m[1][0], m[2][0], m[3][0],
+                         m[0][1], m[1][1], m[2][1], m[3][1],
+                         m[0][2], m[1][2], m[2][2], m[3][2],
+                         m[0][3], m[1][3], m[2][3], m[3][3]);
     }
 
     // Vulkan style 0 to 1 depth range
@@ -95,22 +97,22 @@ namespace vsg
         T r = static_cast<T>(1.0 / (zNear - zFar));
         return t_mat4<T>(f / aspectRatio, 0, 0, 0,
                          0, -f, 0, 0,
-                         0, 0, (zFar)*r, (zFar * zNear) * r,
-                         0, 0, -1, 0);
+                         0, 0, (zFar)*r, -1,
+                         0, 0, (zFar * zNear) * r, 0);
     }
 
     // from vulkan cookbook
     template<typename T>
     constexpr t_mat4<T> orthographic(T left, T right, T bottom, T top, T zNear, T zFar)
     {
-        return t_mat4<T>(2.0f / (right - left), 0.0f, 0.0f, 0.0f,
-                         0.0f, 2.0f / (bottom - top), 0.0f, 0.0f,
-                         0.0f, 0.0f, 1.0f / (zNear - zFar), 0.0f,
-                         -(right + left) / (right - left), -(bottom + top) / (bottom - top), zNear / (zNear - zFar), 1.0f);
+        return t_mat4<T>(2.0 / (right - left), 0.0, 0.0, 0.0,
+                         0.0, 2.0 / (bottom - top), 0.0, 0.0,
+                         0.0, 0.0, 1.0 / (zNear - zFar), 0.0,
+                         -(right + left) / (right - left), -(bottom + top) / (bottom - top), zNear / (zNear - zFar), 1.0);
     }
 
     template<typename T>
-    constexpr t_mat4<T> lookAt(t_vec3<T> const& eye, t_vec3<T> const& center, t_vec3<T> const& up)
+    constexpr t_mat4<T> lookAt(const t_vec3<T>& eye, const t_vec3<T>& center, const t_vec3<T>& up)
     {
         using vec_type = t_vec3<T>;
 
@@ -119,10 +121,35 @@ namespace vsg
         vec_type side = normalize(cross(forward, up_normal));
         vec_type u = normalize(cross(side, forward));
 
-        return t_mat4<T>(side[0], side[1], side[2], 0,
-                         u[0], u[1], u[2], 0,
-                         -forward[0], -forward[1], -forward[2], 0,
+        return t_mat4<T>(side[0], u[0], -forward[0], 0,
+                         side[1], u[1], -forward[1], 0,
+                         side[2], u[2], -forward[2], 0,
                          0, 0, 0, 1) *
                vsg::translate(-eye.x, -eye.y, -eye.z);
     }
+
+    /// fast float matrix inversion that use assumes the matrix is composed of only scales, rotations and translations forming a 4x3 matrix.
+    extern VSG_DECLSPEC mat4 inverse_4x3(const mat4& m);
+
+    /// fast double matrix inversion that use assumes the matrix is composed of only scales, rotations and translations forming a 4x3 matrix.
+    extern VSG_DECLSPEC dmat4 inverse_4x3(const dmat4& m);
+
+    /// general purpose 4x4 float matrix inversion.
+    extern VSG_DECLSPEC mat4 inverse_4x4(const mat4& m);
+
+    /// general purpose 4x4 float matrix inversion.
+    extern VSG_DECLSPEC dmat4 inverse_4x4(const dmat4& m);
+
+    /// matrix float inversion with automatic selection of inverse_4x3 when appropriate, otherwise uses inverse_4x4
+    extern VSG_DECLSPEC mat4 inverse(const mat4& m);
+
+    /// double matrix inversion with automatic selection of inverse_4x3 when appropriate, otherwise uses inverse_4x4
+    extern VSG_DECLSPEC dmat4 inverse(const dmat4& m);
+
+    /// compute the bounding sphere that encploses a frustum defined by specified float ModelViewMatrixProjection
+    extern VSG_DECLSPEC sphere computeFrustumBound(const mat4& m);
+
+    /// compute the bounding sphere that encploses a frustum defined by specified double ModelViewMatrixProjection
+    extern VSG_DECLSPEC dsphere computeFrustumBound(const dmat4& m);
+
 } // namespace vsg

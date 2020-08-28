@@ -10,34 +10,24 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/commands/PipelineBarrier.h>
+#include <vsg/core/Exception.h>
+#include <vsg/io/Options.h>
+#include <vsg/ui/ApplicationEvent.h>
 #include <vsg/viewer/Window.h>
+#include <vsg/vk/SubmitCommands.h>
 
 #include <array>
 #include <chrono>
-#include <iostream>
 
 using namespace vsg;
 
-Window::Window(vsg::ref_ptr<vsg::Window::Traits> traits, vsg::AllocationCallbacks* allocator) :
+Window::Window(ref_ptr<WindowTraits> traits) :
     _traits(traits),
+    _extent2D{std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()},
     _clearColor{{0.2f, 0.2f, 0.4f, 1.0f}},
-    _nextImageIndex(0)
+    _framebufferSamples(VK_SAMPLE_COUNT_1_BIT)
 {
-    // create the vkInstance
-    vsg::Names instanceExtensions = getInstanceExtensions();
-
-    vsg::Names requestedLayers;
-    if (traits && traits->debugLayer)
-    {
-        instanceExtensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
-        requestedLayers.push_back("VK_LAYER_LUNARG_standard_validation");
-        if (traits->apiDumpLayer) requestedLayers.push_back("VK_LAYER_LUNARG_api_dump");
-    }
-
-    vsg::Names validatedNames = vsg::validateInstancelayerNames(requestedLayers);
-
-    _instance = vsg::Instance::create(instanceExtensions, validatedNames, allocator);
-    if (!_instance) throw Result("Error: vsg::Window::create(...) failed to create Window, unable to create Vulkan instance.", VK_ERROR_INVALID_EXTERNAL_HANDLE);
 }
 
 Window::~Window()
@@ -60,54 +50,137 @@ void Window::clear()
     _physicalDevice = 0;
 }
 
-void Window::share(const Window& window)
+void Window::share(Window& window)
 {
-    _instance = window._instance;
-    _physicalDevice = window._physicalDevice;
-    _device = window._device;
-    _renderPass = window._renderPass;
+    _instance = window.getOrCreateInstance();
+    _physicalDevice = window.getOrCreatePhysicalDevice();
+    _device = window.getOrCreateDevice();
+    _renderPass = window.getOrCreateRenderPass();
+
+    _initSurface();
+    _initFormats();
 }
 
-void Window::initaliseDevice()
+void Window::_initInstance()
 {
-    vsg::Names requestedLayers;
-    if (_traits->debugLayer)
+    if (_traits->device)
     {
-        requestedLayers.push_back("VK_LAYER_LUNARG_standard_validation");
-        if (_traits->apiDumpLayer) requestedLayers.push_back("VK_LAYER_LUNARG_api_dump");
+        _instance = _traits->device->getInstance();
     }
+    else
+    {
+        // create the vkInstance
+        vsg::Names instanceExtensions = _traits->instanceExtensionNames;
 
-    vsg::Names validatedNames = vsg::validateInstancelayerNames(requestedLayers);
+        instanceExtensions.push_back("VK_KHR_surface");
+        instanceExtensions.push_back(instanceExtensionSurfaceName());
 
-    vsg::Names deviceExtensions;
-    deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+        vsg::Names requestedLayers;
+        if (_traits->debugLayer || _traits->apiDumpLayer)
+        {
+            instanceExtensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+            requestedLayers.push_back("VK_LAYER_KHRONOS_validation");         // new validation layer name
+            requestedLayers.push_back("VK_LAYER_LUNARG_standard_validation"); // old validation layer name
+            if (_traits->apiDumpLayer) requestedLayers.push_back("VK_LAYER_LUNARG_api_dump");
+        }
 
-    // set up device
-    vsg::ref_ptr<vsg::PhysicalDevice> physicalDevice = vsg::PhysicalDevice::create(_instance, VK_QUEUE_GRAPHICS_BIT, _surface);
-    if (!physicalDevice) throw Result("Error: vsg::Window::create(...) failed to create Window, no Vulkan PhysicalDevice supported.", VK_ERROR_INVALID_EXTERNAL_HANDLE);
-
-    vsg::ref_ptr<vsg::Device> device = vsg::Device::create(physicalDevice, validatedNames, deviceExtensions, _traits->allocator);
-    if (!device) throw Result("Error: vsg::Window::create(...) failed to create Window, unable to create Vulkan logical Device.", VK_ERROR_INVALID_EXTERNAL_HANDLE);
-
-    // set up renderpass with the imageFormat that the swap chain will use
-    vsg::SwapChainSupportDetails supportDetails = vsg::querySwapChainSupport(*physicalDevice, *_surface);
-    VkSurfaceFormatKHR imageFormat = vsg::selectSwapSurfaceFormat(supportDetails);
-    VkFormat depthFormat = VK_FORMAT_D24_UNORM_S8_UINT; //VK_FORMAT_D32_SFLOAT; // VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_SFLOAT_S8_UINT
-    vsg::ref_ptr<vsg::RenderPass> renderPass = vsg::RenderPass::create(device, imageFormat.format, depthFormat, _traits->allocator);
-    if (!renderPass) throw Result("Error: vsg::Window::create(...) failed to create Window, unable to create Vulkan RenderPass.", VK_ERROR_INVALID_EXTERNAL_HANDLE);
-
-    _physicalDevice = physicalDevice;
-    _device = device;
-    _renderPass = renderPass;
+        vsg::Names validatedNames = vsg::validateInstancelayerNames(requestedLayers);
+        _instance = vsg::Instance::create(instanceExtensions, validatedNames);
+    }
 }
 
-void Window::buildSwapchain(uint32_t width, uint32_t height)
+void Window::_initFormats()
 {
-    if (!_imageAvailableSemaphore)
+    vsg::SwapChainSupportDetails supportDetails = vsg::querySwapChainSupport(*_physicalDevice, *_surface);
+
+    _imageFormat = vsg::selectSwapSurfaceFormat(supportDetails, _traits->swapchainPreferences.surfaceFormat);
+    _depthFormat = _traits->depthFormat;
+
+    // compute the sample bits to use
+    if (_traits->samples != VK_SAMPLE_COUNT_1_BIT)
     {
-        _imageAvailableSemaphore = vsg::Semaphore::create(_device);
+        VkSampleCountFlags deviceColorSamples = _physicalDevice->getProperties().limits.framebufferColorSampleCounts;
+        VkSampleCountFlags deviceDepthSamples = _physicalDevice->getProperties().limits.framebufferDepthSampleCounts;
+        VkSampleCountFlags satisfied = deviceColorSamples & deviceDepthSamples & _traits->samples;
+        if (satisfied != 0)
+        {
+            uint32_t highest = 1 << static_cast<uint32_t>(floor(log2(satisfied)));
+            _framebufferSamples = static_cast<VkSampleCountFlagBits>(highest);
+        }
+        else
+        {
+            _framebufferSamples = VK_SAMPLE_COUNT_1_BIT;
+        }
+    }
+    else
+    {
+        _framebufferSamples = VK_SAMPLE_COUNT_1_BIT;
+    }
+}
+
+void Window::_initDevice()
+{
+    if (!_instance) _initInstance();
+    if (!_surface) _initSurface();
+
+    // Device
+    if (_traits->device)
+    {
+        _device = _traits->device;
+        _physicalDevice = _device->getPhysicalDevice();
+    }
+    else
+    {
+        vsg::Names requestedLayers;
+        if (_traits->debugLayer)
+        {
+            requestedLayers.push_back("VK_LAYER_LUNARG_standard_validation");
+            if (_traits->apiDumpLayer) requestedLayers.push_back("VK_LAYER_LUNARG_api_dump");
+        }
+
+        vsg::Names validatedNames = vsg::validateInstancelayerNames(requestedLayers);
+
+        vsg::Names deviceExtensions;
+        deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+
+        deviceExtensions.insert(deviceExtensions.end(), _traits->deviceExtensionNames.begin(), _traits->deviceExtensionNames.end());
+
+        // set up device
+        auto [physicalDevice, queueFamily, presentFamily] = _instance->getPhysicalDeviceAndQueueFamily(_traits->queueFlags, _surface);
+        if (!physicalDevice || queueFamily < 0 || presentFamily < 0) throw Exception{"Error: vsg::Window::create(...) failed to create Window, no Vulkan PhysicalDevice supported.", VK_ERROR_INVALID_EXTERNAL_HANDLE};
+
+        vsg::QueueSettings queueSettings{vsg::QueueSetting{queueFamily, {1.0}}, vsg::QueueSetting{presentFamily, {1.0}}};
+        _device = vsg::Device::create(physicalDevice, queueSettings, validatedNames, deviceExtensions, _instance->getAllocationCallbacks());
+        _physicalDevice = physicalDevice;
     }
 
+    _initFormats();
+}
+
+void Window::_initRenderPass()
+{
+    if (!_device) _initDevice();
+
+    if (_framebufferSamples == VK_SAMPLE_COUNT_1_BIT)
+    {
+        _renderPass = vsg::createRenderPass(_device, _imageFormat.format, _depthFormat);
+    }
+    else
+    {
+        _renderPass = vsg::createMultisampledRenderPass(_device, _imageFormat.format, _depthFormat, _framebufferSamples);
+    }
+}
+
+void Window::_initSwapchain()
+{
+    if (!_device) _initDevice();
+    if (!_renderPass) _initRenderPass();
+
+    buildSwapchain();
+}
+
+void Window::buildSwapchain()
+{
     if (_swapchain)
     {
         // make sure all operations on the device have stopped before we go deleting associated resources
@@ -115,24 +188,53 @@ void Window::buildSwapchain(uint32_t width, uint32_t height)
 
         // clean up previous swap chain before we begin creating a new one.
         _frames.clear();
+        _indices.clear();
 
         _depthImageView = 0;
         _depthImage = 0;
         _depthImageMemory = 0;
 
+        _multisampleImage = 0;
+        _multisampleImageView = 0;
+
         _swapchain = 0;
     }
 
     // is width and height even required here as the surface appear to control it.
-
-    _swapchain = Swapchain::create(_physicalDevice, _device, _surface, width, height, _traits->swapchainPreferences);
+    _swapchain = Swapchain::create(_physicalDevice, _device, _surface, _extent2D.width, _extent2D.height, _traits->swapchainPreferences);
 
     // pass back the extents used by the swap chain.
     _extent2D = _swapchain->getExtent();
 
+    bool multisampling = _framebufferSamples != VK_SAMPLE_COUNT_1_BIT;
+    if (multisampling)
+    {
+        VkImageCreateInfo colorImageCreateInfo = {};
+        colorImageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        colorImageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+        colorImageCreateInfo.format = _imageFormat.format;
+        colorImageCreateInfo.extent.width = _extent2D.width;
+        colorImageCreateInfo.extent.height = _extent2D.height;
+        colorImageCreateInfo.extent.depth = 1;
+        colorImageCreateInfo.mipLevels = 1;
+        colorImageCreateInfo.arrayLayers = 1;
+        colorImageCreateInfo.samples = _framebufferSamples;
+        colorImageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        colorImageCreateInfo.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        colorImageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        colorImageCreateInfo.flags = 0;
+        colorImageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        colorImageCreateInfo.queueFamilyIndexCount = 0;
+        colorImageCreateInfo.pNext = nullptr;
+        _multisampleImage = Image::create(_device, colorImageCreateInfo);
+
+        auto colorMemory = DeviceMemory::create(_device, _multisampleImage->getMemoryRequirements(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        _multisampleImage->bind(colorMemory, 0);
+
+        _multisampleImageView = ImageView::create(_device, _multisampleImage, VK_IMAGE_VIEW_TYPE_2D, _imageFormat.format, VK_IMAGE_ASPECT_COLOR_BIT);
+    }
+
     // create depth buffer
-    //VkFormat depthFormat = VK_FORMAT_D32_SFLOAT; // VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT
-    VkFormat depthFormat = VK_FORMAT_D24_UNORM_S8_UINT;
     VkImageCreateInfo depthImageCreateInfo = {};
     depthImageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     depthImageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -141,106 +243,109 @@ void Window::buildSwapchain(uint32_t width, uint32_t height)
     depthImageCreateInfo.extent.depth = 1;
     depthImageCreateInfo.mipLevels = 1;
     depthImageCreateInfo.arrayLayers = 1;
-    depthImageCreateInfo.format = depthFormat;
+    depthImageCreateInfo.format = _depthFormat;
     depthImageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     depthImageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    depthImageCreateInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    depthImageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    depthImageCreateInfo.usage = _traits->depthImageUsage;
+    depthImageCreateInfo.samples = _framebufferSamples;
     depthImageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     depthImageCreateInfo.pNext = nullptr;
 
     _depthImage = Image::create(_device, depthImageCreateInfo);
-    _depthImageMemory = DeviceMemory::create(_device, _depthImage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    _depthImageMemory = DeviceMemory::create(_device, _depthImage->getMemoryRequirements(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     vkBindImageMemory(*_device, *_depthImage, *_depthImageMemory, 0);
 
-    _depthImageView = ImageView::create(_device, _depthImage, VK_IMAGE_VIEW_TYPE_2D, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT);
+    _depthImageView = ImageView::create(_device, _depthImage, VK_IMAGE_VIEW_TYPE_2D, _depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT);
+
+    int graphicsFamily = -1;
+    std::tie(graphicsFamily, std::ignore) = _physicalDevice->getQueueFamily(VK_QUEUE_GRAPHICS_BIT, _surface);
 
     // set up framebuffer and associated resources
-    Swapchain::ImageViews& imageViews = _swapchain->getImageViews();
+    auto& imageViews = _swapchain->getImageViews();
 
+    _availableSemaphore = vsg::Semaphore::create(_device, _traits->imageAvailableSemaphoreWaitFlag);
+
+    size_t initial_indexValue = imageViews.size();
     for (size_t i = 0; i < imageViews.size(); ++i)
     {
-        std::array<VkImageView, 2> attachments = {{*imageViews[i], *_depthImageView}};
+        vsg::ImageViews attachments;
+        if (multisampling)
+        {
+            attachments.push_back(_multisampleImageView);
+        }
+        attachments.push_back(imageViews[i]);
+        attachments.push_back(_depthImageView);
 
-        VkFramebufferCreateInfo framebufferInfo = {};
-        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebufferInfo.renderPass = *_renderPass;
-        framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-        framebufferInfo.pAttachments = attachments.data();
-        framebufferInfo.width = _extent2D.width;
-        framebufferInfo.height = _extent2D.height;
-        framebufferInfo.layers = 1;
+        ref_ptr<Framebuffer> fb = Framebuffer::create(_renderPass, attachments, _extent2D.width, _extent2D.height, 1);
 
-        ref_ptr<Semaphore> ias = vsg::Semaphore::create(_device);
-        ref_ptr<Framebuffer> fb = Framebuffer::create(_device, framebufferInfo);
-        ref_ptr<CommandPool> cp = CommandPool::create(_device, _physicalDevice->getGraphicsFamily());
-#if 0
-        ref_ptr<CommandBuffer> cb = CommandBuffer::create(_device, cp, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-#else
-        ref_ptr<CommandBuffer> cb = CommandBuffer::create(_device, cp, VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT);
-#endif
-        ref_ptr<Fence> fence = Fence::create(_device);
+        ref_ptr<Semaphore> ias = vsg::Semaphore::create(_device, _traits->imageAvailableSemaphoreWaitFlag);
 
-        _frames.push_back({ias, imageViews[i], fb, cp, cb, false, fence});
+        _frames.push_back({multisampling ? _multisampleImageView : imageViews[i], fb, ias});
+        _indices.push_back(initial_indexValue);
     }
 
-    dispatchCommandsToQueue(_device, _frames[0].commandPool, _device->getQueue(_physicalDevice->getGraphicsFamily()), [&](VkCommandBuffer commandBuffer) {
-        vsg::ImageMemoryBarrier depthImageMemoryBarrier(
-            0, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-            VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-            _depthImage);
+    {
+        // ensure image attachments are setup on GPU.
+        ref_ptr<CommandPool> commandPool = CommandPool::create(_device, graphicsFamily);
+        submitCommandsToQueue(_device, commandPool, _device->getQueue(graphicsFamily), [&](CommandBuffer& commandBuffer) {
+            auto depthImageBarrier = ImageMemoryBarrier::create(
+                0, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
+                _depthImage,
+                VkImageSubresourceRange{VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, 0, 1, 0, 1});
 
-        depthImageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+            auto pipelineBarrier = PipelineBarrier::create(
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+                0, depthImageBarrier);
+            pipelineBarrier->record(commandBuffer);
 
-        depthImageMemoryBarrier.cmdPiplineBarrier(commandBuffer,
-                                                  VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT);
-    });
-
-    _nextImageIndex = 0;
+            if (multisampling)
+            {
+                auto msImageBarrier = ImageMemoryBarrier::create(
+                    0, VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
+                    _multisampleImage,
+                    VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1});
+                auto msPipelineBarrier = PipelineBarrier::create(
+                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                    0, msImageBarrier);
+                msPipelineBarrier->record(commandBuffer);
+            }
+        });
+    }
 }
 
-void Window::populateCommandBuffers(uint32_t index)
+VkResult Window::acquireNextImage(uint64_t timeout)
 {
-    Frame& frame = _frames[index];
+    if (!_swapchain) _initSwapchain();
 
-    if (frame.commandsCompletedFence)
+    if (!_availableSemaphore) _availableSemaphore = vsg::Semaphore::create(_device, _traits->imageAvailableSemaphoreWaitFlag);
+
+    uint32_t imageIndex;
+    VkResult result = _swapchain->acquireNextImage(timeout, _availableSemaphore, {}, imageIndex);
+
+    if (result == VK_SUCCESS)
     {
-        if (frame.checkCommandsCompletedFence)
+        // the aquired image's semaphore must be available now so make it the new _availableSemaphore and set it's enty to the one to use of the next frame by swapping ref_ptr<>'s
+        _availableSemaphore.swap(_frames[imageIndex].imageAvailableSemaphore);
+
+        // shift up previous frame indices
+        for (size_t i = 1; i < _indices.size(); ++i)
         {
-            while (frame.commandsCompletedFence->wait(1000000000) == VK_TIMEOUT)
-            {
-                std::cout << "populateCommandBuffers(" << index << ") frame.commandsCompletedFence->wait(1000) failed with VK_TIMEOUT." << std::endl;
-            }
+            _indices[i] = _indices[i - 1];
         }
 
-        frame.commandsCompletedFence->reset();
+        // update head of _indices to the new frames imageIndex
+        _indices[0] = imageIndex;
     }
-
-    for (auto& stage : _stages)
+    else
     {
-        stage->populateCommandBuffer(frame.commandBuffer, frame.framebuffer, _renderPass, _extent2D, _clearColor);
+        // TODO: Need to think about what should happen on failure
     }
-}
 
-// just kept for backwards compatibility for now
-Window::Result Window::create(uint32_t width, uint32_t height, bool debugLayer, bool apiDumpLayer, vsg::Window* shareWindow, vsg::AllocationCallbacks* allocator)
-{
-    vsg::ref_ptr<Window::Traits> traits(new Window::Traits());
-    traits->width = width;
-    traits->height = height;
-    traits->shareWindow = shareWindow;
-    traits->debugLayer = debugLayer;
-    traits->apiDumpLayer = apiDumpLayer;
-    traits->allocator = allocator;
-    return create(traits);
-}
-
-// just kept for backwards compatibility for now
-Window::Result Window::create(vsg::ref_ptr<Traits> traits, bool debugLayer, bool apiDumpLayer, vsg::AllocationCallbacks* allocator)
-{
-    traits->debugLayer = debugLayer;
-    traits->apiDumpLayer = apiDumpLayer;
-    traits->allocator = allocator;
-    return create(traits);
+    return result;
 }

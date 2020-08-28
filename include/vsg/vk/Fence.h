@@ -12,25 +12,31 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-#include <vsg/vk/Device.h>
+#include <vsg/vk/CommandBuffer.h>
+#include <vsg/vk/Semaphore.h>
 
 namespace vsg
 {
     class VSG_DECLSPEC Fence : public Inherit<Object, Fence>
     {
     public:
-        Fence(VkFence Fence, Device* device, AllocationCallbacks* allocator = nullptr);
+        Fence(Device* device, VkFenceCreateFlags flags = 0);
 
-        using Result = vsg::Result<Fence, VkResult, VK_SUCCESS>;
-        static Result create(Device* device, VkFenceCreateFlags flags = 0, AllocationCallbacks* allocator = nullptr);
+        VkResult wait(uint64_t timeout) const;
 
-        VkResult wait(uint64_t timeout) const { return vkWaitForFences(*_device, 1, &_vkFence, VK_TRUE, timeout); }
-
-        VkResult reset() const { return vkResetFences(*_device, 1, &_vkFence); }
+        VkResult reset() const;
 
         VkResult status() const { return vkGetFenceStatus(*_device, _vkFence); }
 
         operator VkFence() const { return _vkFence; }
+        VkFence vk() const { return _vkFence; }
+
+        bool hasDependencies() const { return (_dependentSemaphores.size() + _dependentCommandBuffers.size()) > 0; }
+
+        void resetFenceAndDependencies();
+
+        Semaphores& dependentSemaphores() { return _dependentSemaphores; }
+        CommandBuffers& dependentCommandBuffers() { return _dependentCommandBuffers; }
 
         Device* getDevice() { return _device; }
         const Device* getDevice() const { return _device; }
@@ -39,8 +45,11 @@ namespace vsg
         virtual ~Fence();
 
         VkFence _vkFence;
+        Semaphores _dependentSemaphores;
+        CommandBuffers _dependentCommandBuffers;
+
         ref_ptr<Device> _device;
-        ref_ptr<AllocationCallbacks> _allocator;
     };
+    VSG_type_name(vsg::Fence);
 
 } // namespace vsg

@@ -40,8 +40,7 @@ namespace vsg
 
         void traverse(Visitor& visitor) override { t_traverse(*this, visitor); }
         void traverse(ConstVisitor& visitor) const override { t_traverse(*this, visitor); }
-        void traverse(DispatchTraversal&) const override {}
-        void traverse(CullTraversal&) const override {}
+        void traverse(RecordTraversal&) const override {}
 
         void read(Input& input) override;
         void write(Output& output) const override;

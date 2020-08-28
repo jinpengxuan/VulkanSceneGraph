@@ -16,126 +16,90 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <memory>
 
 #include <vsg/core/Object.h>
-
+#include <vsg/core/ScratchMemory.h>
 #include <vsg/nodes/Group.h>
-
+#include <vsg/state/GraphicsPipeline.h>
 #include <vsg/vk/BufferData.h>
-#include <vsg/vk/Command.h>
 #include <vsg/vk/CommandPool.h>
 #include <vsg/vk/DescriptorPool.h>
 #include <vsg/vk/Fence.h>
-#include <vsg/vk/GraphicsPipeline.h>
-
-#include <vsg/vk/BufferData.h>
 #include <vsg/vk/ImageData.h>
+#include <vsg/vk/MemoryBufferPools.h>
+
+#include <vsg/commands/Command.h>
 
 namespace vsg
 {
-    struct BufferPreferences
-    {
-        VkDeviceSize minimumBufferSize = 16 * 1024 * 1024;
-        VkDeviceSize minimumBufferDeviceMemorySize = 16 * 1024 * 1024;
-        VkDeviceSize minimumImageDeviceMemorySize = 16 * 1024 * 1024;
-    };
-
-    class MemoryBufferPools : public Inherit<Object, MemoryBufferPools>
+    class VSG_DECLSPEC BuildAccelerationStructureCommand : public Inherit<Command, BuildAccelerationStructureCommand>
     {
     public:
-        MemoryBufferPools(const std::string& name, Device* in_device, BufferPreferences preferences);
+        BuildAccelerationStructureCommand(Device* device, VkAccelerationStructureInfoNV* info, const VkAccelerationStructureNV& structure, Buffer* instanceBuffer, Allocator* allocator = nullptr);
 
-        std::string name;
-        ref_ptr<Device> device;
-        BufferPreferences bufferPreferences;
+        void compile(Context&) override {}
+        void record(CommandBuffer& commandBuffer) const override;
 
-        // transfer data settings
-        // used by BufferData.cpp, ImageData.cpp
-        using MemoryPools = std::vector<ref_ptr<DeviceMemory>>;
-        MemoryPools memoryPools;
+        ref_ptr<Device> _device;
+        VkAccelerationStructureInfoNV* _accelerationStructureInfo;
+        VkAccelerationStructureNV _accelerationStructure;
+        ref_ptr<Buffer> _instanceBuffer;
 
-        using BufferPools = std::vector<ref_ptr<Buffer>>;
-        BufferPools bufferPools;
-
-        BufferData reserveBufferData(VkDeviceSize totalSize, VkDeviceSize alignment, VkBufferUsageFlags bufferUsageFlags, VkSharingMode sharingMode, VkMemoryPropertyFlags memoryProperties);
-
-        using DeviceMemoryOffset = std::pair<ref_ptr<DeviceMemory>, VkDeviceSize>;
-        DeviceMemoryOffset reserveMemory(VkMemoryRequirements memRequirements, VkMemoryPropertyFlags memoryProperties);
-
-        using CopyPair = std::pair<BufferData, BufferData>;
-        using CopyQueue = std::deque<CopyPair>;
-
-        CopyQueue bufferDataToCopy;
+        // scratch buffer set after compile traversal before record of build commands
+        ref_ptr<Buffer> _scratchBuffer;
     };
 
-    class CopyAndReleaseBufferDataCommand : public Command
-    {
-    public:
-        CopyAndReleaseBufferDataCommand(BufferData src, BufferData dest) :
-            source(src),
-            destination(dest) {}
-
-        BufferData source;
-        BufferData destination;
-
-        void dispatch(CommandBuffer& commandBuffer) const override;
-
-    protected:
-        virtual ~CopyAndReleaseBufferDataCommand();
-    };
-
-    class CopyAndReleaseImageDataCommand : public Command
-    {
-    public:
-        CopyAndReleaseImageDataCommand(BufferData src, ImageData dest, uint32_t numMipMapLevels) :
-            source(src),
-            destination(dest),
-            mipLevels(numMipMapLevels) {}
-
-        void dispatch(CommandBuffer& commandBuffer) const override;
-
-        BufferData source;
-        ImageData destination;
-        uint32_t mipLevels = 1;
-
-    protected:
-        virtual ~CopyAndReleaseImageDataCommand();
-    };
-
-    class Context
+    class VSG_DECLSPEC Context
     {
     public:
         Context(Device* in_device, BufferPreferences bufferPreferences = {});
 
+        Context(const Context& context);
+
+        virtual ~Context();
+
         // used by BufferData.cpp, ComputePipeline.cpp, Descriptor.cpp, Descriptor.cpp, DescriptorSet.cpp, DescriptorSetLayout.cpp, GraphicsPipeline.cpp, ImageData.cpp, PipelineLayout.cpp, ShaderModule.cpp
+        const uint32_t deviceID = 0;
         ref_ptr<Device> device;
 
         // used by GraphicsPipeline.cpp
         ref_ptr<RenderPass> renderPass;
-        ref_ptr<ViewportState> viewport;
+
+        // pipeline states that are usually not set in a scene, e.g.,
+        // the viewport state, but might be set for some uses
+        GraphicsPipelineStates defaultPipelineStates;
+
+        // pipeline states that must be set to avoid Vulkan errors
+        // e.g., MultisampleState.
+        // XXX MultisampleState is complicated because the sample
+        // number needs to agree with the renderpass attachement, but
+        // other parts of the state, like alpha to coverage, belong to
+        // the scene graph .
+        GraphicsPipelineStates overridePipelineStates;
 
         // DescriptorSet.cpp
         ref_ptr<DescriptorPool> descriptorPool;
 
         // transfer data settings
         // used by BufferData.cpp, ImageData.cpp
-        using MemoryPools = std::vector<ref_ptr<DeviceMemory>>;
-        using BufferPools = std::vector<ref_ptr<Buffer>>;
-
-        VkQueue graphicsQueue = 0;
+        ref_ptr<Queue> graphicsQueue;
         ref_ptr<CommandPool> commandPool;
         ref_ptr<CommandBuffer> commandBuffer;
         ref_ptr<Fence> fence;
+        ref_ptr<Semaphore> semaphore;
+        ref_ptr<ScratchMemory> scratchMemory;
 
-        std::vector<ref_ptr<CopyAndReleaseBufferDataCommand>> copyBufferDataCommands;
-        std::vector<ref_ptr<CopyAndReleaseImageDataCommand>> copyImageDataCommands;
         std::vector<ref_ptr<Command>> commands;
 
-        void dispatchCommands();
+        void record();
+        void waitForCompletion();
 
         ref_ptr<CommandBuffer> getOrCreateCommandBuffer();
-        ref_ptr<Fence> getOrCreateFence();
 
-        MemoryBufferPools deviceMemoryBufferPools;
-        MemoryBufferPools stagingMemoryBufferPools;
+        ref_ptr<MemoryBufferPools> deviceMemoryBufferPools;
+        ref_ptr<MemoryBufferPools> stagingMemoryBufferPools;
+
+        // raytracing
+        VkDeviceSize scratchBufferSize;
+        std::vector<ref_ptr<BuildAccelerationStructureCommand>> buildAccelerationStructureCommands;
     };
 
 } // namespace vsg

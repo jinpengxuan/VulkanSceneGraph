@@ -13,6 +13,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/nodes/Group.h>
 
 #include <vsg/io/Input.h>
+#include <vsg/io/Options.h>
 #include <vsg/io/Output.h>
 
 using namespace vsg;
@@ -39,7 +40,7 @@ void Group::read(Input& input)
     _children.resize(input.readValue<uint32_t>("NumChildren"));
     for (auto& child : _children)
     {
-        child = input.readObject<Node>("Child");
+        input.readObject("Child", child);
     }
 }
 

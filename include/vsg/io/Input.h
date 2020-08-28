@@ -14,6 +14,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #include <vsg/core/Data.h>
 #include <vsg/core/Object.h>
+#include <vsg/core/Version.h>
 
 #include <vsg/maths/box.h>
 #include <vsg/maths/mat4.h>
@@ -34,7 +35,7 @@ namespace vsg
     // forward declare
     class Options;
 
-    class Input
+    class VSG_DECLSPEC Input
     {
     public:
         Input(ref_ptr<ObjectFactory> in_objectFactory, ref_ptr<const Options> in_options = {});
@@ -91,7 +92,17 @@ namespace vsg
 
         // treat non standard type as raw data,
         template<typename T>
-        void read(size_t num, T* value) { read(num * sizeof(T), reinterpret_cast<uint8_t*>(value)); }
+        void read(size_t num, T* value)
+        {
+            if constexpr (has_read_write<T>())
+            {
+                for (size_t i = 0; i < num; ++i) value[i].read(*this);
+            }
+            else
+            {
+                read(num * sizeof(T), reinterpret_cast<uint8_t*>(value));
+            }
+        }
 
         // match property name and read value(s)
         template<typename... Args>
@@ -121,6 +132,15 @@ namespace vsg
             return ref_ptr<T>(dynamic_cast<T*>(object.get()));
         }
 
+        // read object of a particular type
+        template<class T>
+        void readObject(const char* propertyName, ref_ptr<T>& arg)
+        {
+            if (!matchPropertyName(propertyName)) return;
+
+            arg = read().cast<T>();
+        }
+
         // read a value of particular type
         template<typename T>
         T readValue(const char* propertyName)
@@ -130,7 +150,7 @@ namespace vsg
             return value;
         }
 
-        /// write a value casting it specified type i.e. output.write<uint32_t>("Value", value);
+        /// read a value as a type, then cast it another type
         template<typename W, typename T>
         void readValue(const char* propertyName, T& value)
         {
@@ -145,9 +165,23 @@ namespace vsg
         ObjectIDMap objectIDMap;
         ref_ptr<ObjectFactory> objectFactory;
         ref_ptr<const Options> options;
+        Path filename;
+
+        VsgVersion version;
+
+        virtual bool version_less(uint32_t major, uint32_t minor, uint32_t patch, uint32_t soversion = 0) const;
+        virtual bool version_greater_equal(uint32_t major, uint32_t minor, uint32_t patch, uint32_t soversion = 0) const;
 
     protected:
         virtual ~Input();
     };
+
+    template<>
+    inline void Input::readObject(const char* propertyName, ref_ptr<Object>& arg)
+    {
+        if (!matchPropertyName(propertyName)) return;
+
+        arg = read();
+    }
 
 } // namespace vsg

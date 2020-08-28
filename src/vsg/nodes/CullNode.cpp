@@ -10,6 +10,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/io/Options.h>
 #include <vsg/io/stream.h>
 #include <vsg/nodes/CullNode.h>
 
@@ -37,7 +38,7 @@ void CullNode::read(Input& input)
 
     input.read("Bound", _bound);
 
-    _child = input.readObject<Node>("Child");
+    input.readObject("Child", _child);
 }
 
 void CullNode::write(Output& output) const

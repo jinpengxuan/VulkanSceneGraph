@@ -19,7 +19,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace vsg
 {
 
-    class ReaderWriter : public Inherit<Object, ReaderWriter>
+    class VSG_DECLSPEC ReaderWriter : public Inherit<Object, ReaderWriter>
     {
     public:
         using vsg::Object::read;
@@ -48,6 +48,9 @@ namespace vsg
         /// write object to specified file, return true on success, return false on failure.
         virtual bool write(const vsg::Object* /*object*/, const vsg::Path& /*filename*/, vsg::ref_ptr<const vsg::Options> = {}) const { return false; }
         virtual bool write(const vsg::Object* /*object*/, std::ostream& /*fout*/, vsg::ref_ptr<const vsg::Options> = {}) const { return false; }
+
+        /// read the command line arguments for any options apprpriate for this ReaderWriter
+        virtual bool readOptions(Options&, CommandLine&) const { return false; }
     };
     VSG_type_name(vsg::ReaderWriter);
 
@@ -55,6 +58,7 @@ namespace vsg
     {
     public:
         using ReaderWriters = std::vector<vsg::ref_ptr<ReaderWriter>>;
+        ReaderWriters readerWriters;
 
         void add(ref_ptr<ReaderWriter> reader);
 
@@ -62,8 +66,10 @@ namespace vsg
 
         bool write(const vsg::Object* object, const vsg::Path& filename, vsg::ref_ptr<const vsg::Options> options = {}) const override;
 
+        /// read the command line arguments for any options apprpriate for this ReaderWriter
+        bool readOptions(vsg::Options& options, vsg::CommandLine& arguments) const override;
+
     protected:
-        ReaderWriters _readerWriters;
     };
     VSG_type_name(vsg::CompositeReaderWriter);
 

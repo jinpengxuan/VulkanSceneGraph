@@ -38,7 +38,6 @@ void AsciiOutput::write(size_t num, const std::string* value)
     {
         _output << ' ';
         _write(*value);
-        _output << '\n';
     }
     else
     {
@@ -47,7 +46,6 @@ void AsciiOutput::write(size_t num, const std::string* value)
             _output << ' ';
             _write(*value);
         }
-        _output << '\n';
     }
 }
 

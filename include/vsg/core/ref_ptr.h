@@ -132,6 +132,9 @@ namespace vsg
             rhs._ptr = temp_ptr;
         }
 
+        template<class R>
+        ref_ptr<R> cast() const { return ref_ptr<R>(_ptr ? _ptr->template cast<R>() : nullptr); }
+
     protected:
         template<class R>
         friend class ref_ptr;

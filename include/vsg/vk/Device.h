@@ -13,33 +13,59 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 </editor-fold> */
 
 #include <vsg/vk/PhysicalDevice.h>
+#include <vsg/vk/Queue.h>
+
+#include <list>
 
 namespace vsg
 {
+
+    // forward declare
+    class WindowTraits;
+
+    struct QueueSetting
+    {
+        int queueFamilyIndex = -1;
+        std::vector<float> queuePiorities;
+    };
+
+    using QueueSettings = std::vector<QueueSetting>;
+
     class VSG_DECLSPEC Device : public Inherit<Object, Device>
     {
     public:
-        Device(VkDevice device, PhysicalDevice* physicalDevice, AllocationCallbacks* allocator = nullptr);
+        Device(PhysicalDevice* physicalDevice, const QueueSettings& queueSettings, const Names& layers, const Names& deviceExtensions, AllocationCallbacks* allocator = nullptr);
 
-        using Result = vsg::Result<Device, VkResult, VK_SUCCESS>;
-        static Result create(PhysicalDevice* physicalDevice, Names& layers, Names& deviceExtensions, AllocationCallbacks* allocator = nullptr);
+        Instance* getInstance() { return _instance.get(); }
+        const Instance* getInstance() const { return _instance.get(); }
 
+        PhysicalDevice* getPhysicalDevice() { return _physicalDevice.get(); }
         const PhysicalDevice* getPhysicalDevice() const { return _physicalDevice.get(); }
-
-        operator VkDevice() const { return _device; }
-        VkDevice getDevice() const { return _device; }
 
         AllocationCallbacks* getAllocationCallbacks() { return _allocator.get(); }
         const AllocationCallbacks* getAllocationCallbacks() const { return _allocator.get(); }
 
-        VkQueue getQueue(uint32_t queueFamilyIndex, uint32_t queueIndex = 0);
+        operator VkDevice() const { return _device; }
+        VkDevice getDevice() const { return _device; }
+
+        static uint32_t maxNumDevices();
+
+        const uint32_t deviceID = 0;
+
+
+        ref_ptr<Queue> getQueue(uint32_t queueFamilyIndex, uint32_t queueIndex = 0);
 
     protected:
         virtual ~Device();
 
         VkDevice _device;
-        vsg::ref_ptr<PhysicalDevice> _physicalDevice;
-        vsg::ref_ptr<AllocationCallbacks> _allocator;
+
+        ref_ptr<Instance> _instance;
+        ref_ptr<PhysicalDevice> _physicalDevice;
+        ref_ptr<AllocationCallbacks> _allocator;
+
+        std::list<ref_ptr<Queue>> _queues;
     };
+    VSG_type_name(vsg::Device);
 
 } // namespace vsg

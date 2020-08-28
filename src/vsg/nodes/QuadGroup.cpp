@@ -13,6 +13,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/nodes/QuadGroup.h>
 
 #include <vsg/io/Input.h>
+#include <vsg/io/Options.h>
 #include <vsg/io/Output.h>
 
 using namespace vsg;
@@ -32,7 +33,7 @@ void QuadGroup::read(Input& input)
 
     for (auto& child : _children)
     {
-        child = input.readObject<Node>("Child");
+        input.readObject("Child", child);
     }
 }
 

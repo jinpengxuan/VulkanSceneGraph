@@ -10,6 +10,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/io/Options.h>
 #include <vsg/viewer/Trackball.h>
 
 #include <iostream>
@@ -80,15 +81,6 @@ void Trackball::apply(ButtonPressEvent& buttonPress)
 {
     prev_ndc = ndc(buttonPress);
     prev_tbc = tbc(buttonPress);
-
-    if (buttonPress.button == 4)
-    {
-        zoom(-0.1);
-    }
-    else if (buttonPress.button == 5)
-    {
-        zoom(0.1);
-    }
 }
 
 void Trackball::apply(ButtonReleaseEvent& buttonRelease)
@@ -128,6 +120,11 @@ void Trackball::apply(MoveEvent& moveEvent)
     prev_tbc = new_tbc;
 }
 
+void Trackball::apply(ScrollWheelEvent& scrollWheel)
+{
+    zoom(scrollWheel.delta.y * 0.1);
+}
+
 void Trackball::apply(FrameEvent& /*frame*/)
 {
     //    std::cout<<"Frame "<<frame.frameStamp->frameCount<<std::endl;
@@ -137,10 +134,9 @@ void Trackball::rotate(double angle, const dvec3& axis)
 {
     dmat4 rotation = vsg::rotate(angle, axis);
     dmat4 lv = lookAt(_lookAt->eye, _lookAt->center, _lookAt->up);
-    dmat4 lvInverse = lookAtInverse(_lookAt->eye, _lookAt->center, _lookAt->up);
     dvec3 centerEyeSpace = (lv * _lookAt->center);
 
-    dmat4 matrix = lvInverse * translate(centerEyeSpace) * rotation * translate(-centerEyeSpace) * lv;
+    dmat4 matrix = inverse(lv) * translate(centerEyeSpace) * rotation * translate(-centerEyeSpace) * lv;
 
     _lookAt->up = normalize(matrix * (_lookAt->eye + _lookAt->up) - matrix * _lookAt->eye);
     _lookAt->center = matrix * _lookAt->center;

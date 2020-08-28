@@ -1,3 +1,5 @@
+#pragma once
+
 /* <editor-fold desc="MIT License">
 
 Copyright(c) 2019 Robert Osfield
@@ -14,27 +16,11 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/ui/ApplicationEvent.h>
 #include <vsg/ui/KeyEvent.h>
 #include <vsg/ui/PointerEvent.h>
+#include <vsg/ui/ScrollWheelEvent.h>
 #include <vsg/viewer/Camera.h>
 
 namespace vsg
 {
-    template<typename T>
-    constexpr t_mat4<T> lookAtInverse(t_vec3<T> const& eye, t_vec3<T> const& center, t_vec3<T> const& up)
-    {
-        using vec_type = t_vec3<T>;
-
-        vec_type forward = normalize(center - eye);
-        vec_type up_normal = normalize(up);
-        vec_type side = normalize(cross(forward, up_normal));
-        vec_type u = normalize(cross(side, forward));
-
-        return translate(eye.x, eye.y, eye.z) *
-               t_mat4<T>(side[0], u[0], -forward[0], 0,
-                         side[1], u[1], -forward[1], 0,
-                         side[2], u[2], -forward[2], 0,
-                         0, 0, 0, 1);
-    }
-
     class Trackball : public Inherit<Visitor, Trackball>
     {
     public:
@@ -51,6 +37,7 @@ namespace vsg
         void apply(ButtonPressEvent& buttonPress) override;
         void apply(ButtonReleaseEvent& buttonRelease) override;
         void apply(MoveEvent& moveEvent) override;
+        void apply(ScrollWheelEvent& scrollWheel) override;
         void apply(FrameEvent& frame) override;
 
         void rotate(double angle, const dvec3& axis);

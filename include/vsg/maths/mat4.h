@@ -40,20 +40,22 @@ namespace vsg
                   {0, 0, v, 0},
                   {0, 0, 0, v}} {}
 
-        constexpr t_mat4(value_type v0, value_type v1, value_type v2, value_type v3,
-                         value_type v4, value_type v5, value_type v6, value_type v7,
-                         value_type v8, value_type v9, value_type v10, value_type v11,
-                         value_type v12, value_type v13, value_type v14, value_type v15) :
-            value{{v0, v4, v8, v12},
-                  {v1, v5, v9, v13},
-                  {v2, v6, v10, v14},
-                  {v3, v7, v11, v15}} {}
+        constexpr t_mat4(value_type v0, value_type v1, value_type v2, value_type v3,   /* column 0 */
+                         value_type v4, value_type v5, value_type v6, value_type v7,   /* column 1 */
+                         value_type v8, value_type v9, value_type v10, value_type v11, /* column 2 */
+                         value_type v12, value_type v13, value_type v14, value_type v15) /* column 3 */ :
+            value{{v0, v1, v2, v3},
+                  {v4, v5, v6, v7},
+                  {v8, v9, v10, v11},
+                  {v12, v13, v14, v15}}
+        {
+        }
 
         constexpr explicit t_mat4(value_type v[16]) :
-            value{{v[0], v[4], v[8], v[12]},
-                  {v[1], v[5], v[9], v[13]},
-                  {v[2], v[6], v[10], v[14]},
-                  {v[3], v[7], v[11], v[15]}} {}
+            value{{v[0], v[1], v[2], v[3]},
+                  {v[4], v[5], v[6], v[7]},
+                  {v[8], v[9], v[10], v[11]},
+                  {v[12], v[13], v[14], v[15]}} {}
 
         template<typename R>
         t_mat4(const t_mat4<R>& rhs)
@@ -69,7 +71,7 @@ namespace vsg
         constexpr std::size_t rows() const { return 4; }
 
         column_type& operator[](std::size_t c) { return value[c]; }
-        column_type const& operator[](std::size_t c) const { return value[c]; }
+        const column_type& operator[](std::size_t c) const { return value[c]; }
 
         value_type& operator()(std::size_t c, std::size_t r) { return value[c][r]; }
         value_type operator()(std::size_t c, std::size_t r) const { return value[c][r]; }
@@ -95,6 +97,24 @@ namespace vsg
     VSG_type_name(vsg::dmat4);
 
     template<typename T>
+    bool operator==(const t_mat4<T>& lhs, const t_mat4<T>& rhs)
+    {
+        return lhs.value[0] == rhs.value[0] &&
+               lhs.value[1] == rhs.value[1] &&
+               lhs.value[2] == rhs.value[2] &&
+               lhs.value[3] == rhs.value[3];
+    }
+
+    template<typename T>
+    bool operator!=(const t_mat4<T>& lhs, const t_mat4<T>& rhs)
+    {
+        return lhs.value[0] != rhs.value[0] ||
+               lhs.value[1] != rhs.value[1] ||
+               lhs.value[2] != rhs.value[2] ||
+               lhs.value[3] != rhs.value[3];
+    }
+
+    template<typename T>
     T dot(const t_mat4<T>& lhs, const t_mat4<T>& rhs, int c, int r)
     {
         return lhs[0][r] * rhs[c][0] +
@@ -104,16 +124,16 @@ namespace vsg
     }
 
     template<typename T>
-    t_mat4<T> operator*(t_mat4<T> const& lhs, t_mat4<T> const& rhs)
+    t_mat4<T> operator*(const t_mat4<T>& lhs, const t_mat4<T>& rhs)
     {
-        return t_mat4<T>(dot(lhs, rhs, 0, 0), dot(lhs, rhs, 1, 0), dot(lhs, rhs, 2, 0), dot(lhs, rhs, 3, 0),
-                         dot(lhs, rhs, 0, 1), dot(lhs, rhs, 1, 1), dot(lhs, rhs, 2, 1), dot(lhs, rhs, 3, 1),
-                         dot(lhs, rhs, 0, 2), dot(lhs, rhs, 1, 2), dot(lhs, rhs, 2, 2), dot(lhs, rhs, 3, 2),
-                         dot(lhs, rhs, 0, 3), dot(lhs, rhs, 1, 3), dot(lhs, rhs, 2, 3), dot(lhs, rhs, 3, 3));
+        return t_mat4<T>(dot(lhs, rhs, 0, 0), dot(lhs, rhs, 0, 1), dot(lhs, rhs, 0, 2), dot(lhs, rhs, 0, 3),
+                         dot(lhs, rhs, 1, 0), dot(lhs, rhs, 1, 1), dot(lhs, rhs, 1, 2), dot(lhs, rhs, 1, 3),
+                         dot(lhs, rhs, 2, 0), dot(lhs, rhs, 2, 1), dot(lhs, rhs, 2, 2), dot(lhs, rhs, 2, 3),
+                         dot(lhs, rhs, 3, 0), dot(lhs, rhs, 3, 1), dot(lhs, rhs, 3, 2), dot(lhs, rhs, 3, 3));
     }
 
     template<typename T>
-    t_vec4<T> operator*(t_mat4<T> const& lhs, t_vec4<T> const& rhs)
+    t_vec4<T> operator*(const t_mat4<T>& lhs, const t_vec4<T>& rhs)
     {
         return t_vec4<T>(lhs[0][0] * rhs[0] + lhs[1][0] * rhs[1] + lhs[2][0] * rhs[2] + lhs[3][0] * rhs[3],
                          lhs[0][1] * rhs[0] + lhs[1][1] * rhs[1] + lhs[2][1] * rhs[2] + lhs[3][1] * rhs[3],
@@ -122,7 +142,7 @@ namespace vsg
     }
 
     template<typename T, typename R>
-    t_plane<R> operator*(t_mat4<T> const& lhs, t_plane<R> const& rhs)
+    t_plane<R> operator*(const t_mat4<T>& lhs, const t_plane<R>& rhs)
     {
         t_plane<R> transformed(lhs[0][0] * rhs[0] + lhs[1][0] * rhs[1] + lhs[2][0] * rhs[2] + lhs[3][0] * rhs[3],
                                lhs[0][1] * rhs[0] + lhs[1][1] * rhs[1] + lhs[2][1] * rhs[2] + lhs[3][1] * rhs[3],
@@ -133,7 +153,7 @@ namespace vsg
     }
 
     template<typename T>
-    t_vec4<T> operator*(t_vec4<T> const& lhs, t_mat4<T> const& rhs)
+    t_vec4<T> operator*(const t_vec4<T>& lhs, const t_mat4<T>& rhs)
     {
         return t_vec4<T>(lhs[0] * rhs[0][0] + lhs[1] * rhs[0][1] + lhs[2] * rhs[0][2] + lhs[3] * rhs[0][3],
                          lhs[0] * rhs[1][0] + lhs[1] * rhs[1][1] + lhs[2] * rhs[1][2] + lhs[3] * rhs[1][3],
@@ -142,7 +162,7 @@ namespace vsg
     }
 
     template<typename T, typename R>
-    t_plane<T> operator*(t_plane<T> const& lhs, t_mat4<R> const& rhs)
+    t_plane<T> operator*(const t_plane<T>& lhs, const t_mat4<R>& rhs)
     {
         t_plane<T> transformed(lhs[0] * rhs[0][0] + lhs[1] * rhs[0][1] + lhs[2] * rhs[0][2] + lhs[3] * rhs[0][3],
                                lhs[0] * rhs[1][0] + lhs[1] * rhs[1][1] + lhs[2] * rhs[1][2] + lhs[3] * rhs[1][3],
@@ -153,7 +173,7 @@ namespace vsg
     }
 
     template<typename T>
-    t_vec3<T> operator*(t_mat4<T> const& lhs, t_vec3<T> const& rhs)
+    t_vec3<T> operator*(const t_mat4<T>& lhs, const t_vec3<T>& rhs)
     {
         T inv = static_cast<T>(1.0) / (lhs[0][3] * rhs[0] + lhs[1][3] * rhs[1] + lhs[2][3] * rhs[2] + lhs[3][3]);
         return t_vec3<T>((lhs[0][0] * rhs[0] + lhs[1][0] * rhs[1] + lhs[2][0] * rhs[2] + lhs[3][0]) * inv,
@@ -162,7 +182,7 @@ namespace vsg
     }
 
     template<typename T>
-    t_vec3<T> operator*(t_vec3<T> const& lhs, t_mat4<T> const& rhs)
+    t_vec3<T> operator*(const t_vec3<T>& lhs, const t_mat4<T>& rhs)
     {
         T inv = static_cast<T>(1.0) / (lhs[0] * rhs[3][0] + lhs[1] * rhs[3][1] + lhs[2] * rhs[3][2] + rhs[3][3]);
         return t_vec3<T>(lhs[0] * rhs[0][0] + lhs[1] * rhs[0][1] + lhs[2] * rhs[0][2] + rhs[0][3] * inv,

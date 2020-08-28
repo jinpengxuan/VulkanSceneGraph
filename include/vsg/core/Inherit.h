@@ -18,8 +18,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/core/ref_ptr.h>
 #include <vsg/core/type_name.h>
 
-#include <vsg/traversals/CullTraversal.h>
-#include <vsg/traversals/DispatchTraversal.h>
+#include <vsg/traversals/RecordTraversal.h>
 
 namespace vsg
 {
@@ -31,15 +30,15 @@ namespace vsg
     {
     public:
         template<typename... Args>
-        Inherit(Allocator* allocator, Args... args) :
+        Inherit(Allocator* allocator, Args&&... args) :
             ParentClass(allocator, args...) {}
 
         template<typename... Args>
-        Inherit(Args... args) :
+        Inherit(Args&&... args) :
             ParentClass(args...) {}
 
         template<typename... Args>
-        static ref_ptr<Subclass> create(ref_ptr<Allocator> allocator, Args... args)
+        static ref_ptr<Subclass> create(ref_ptr<Allocator> allocator, Args&&... args)
         {
             if (allocator)
             {
@@ -62,19 +61,26 @@ namespace vsg
         }
 
         template<typename... Args>
-        static ref_ptr<Subclass> create(Args... args)
+        static ref_ptr<Subclass> create(Args&&... args)
         {
             return ref_ptr<Subclass>(new Subclass(args...));
         }
 
+        template<typename... Args>
+        static ref_ptr<Subclass> create_if(bool flag, Args&&... args)
+        {
+            if (flag) return ref_ptr<Subclass>(new Subclass(args...));
+            return {};
+        }
+
         std::size_t sizeofObject() const noexcept override { return sizeof(Subclass); }
+        const char* className() const noexcept override { return type_name<Subclass>(); }
+        const std::type_info& type_info() const noexcept override { return typeid(Subclass); }
+        bool is_compatible(const std::type_info& type) const noexcept override { return typeid(Subclass) == type ? true : ParentClass::is_compatible(type); }
 
         void accept(Visitor& visitor) override { visitor.apply(static_cast<Subclass&>(*this)); }
         void accept(ConstVisitor& visitor) const override { visitor.apply(static_cast<const Subclass&>(*this)); }
-        void accept(DispatchTraversal& visitor) const override { visitor.apply(static_cast<const Subclass&>(*this)); }
-        void accept(CullTraversal& visitor) const override { visitor.apply(static_cast<const Subclass&>(*this)); }
-
-        const char* className() const noexcept override { return type_name<Subclass>(); }
+        void accept(RecordTraversal& visitor) const override { visitor.apply(static_cast<const Subclass&>(*this)); }
     };
 
 } // namespace vsg

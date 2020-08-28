@@ -10,75 +10,43 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/core/Exception.h>
+#include <vsg/io/Options.h>
 #include <vsg/vk/Image.h>
 
 using namespace vsg;
 
-Image::Image(VkImage image, Device* device, AllocationCallbacks* allocator) :
+Image::Image(VkImage image, Device* device) :
     _image(image),
-    _device(device),
-    _allocator(allocator)
+    _device(device)
 {
+}
+
+Image::Image(Device* device, const VkImageCreateInfo& createImageInfo) :
+    _device(device)
+{
+    if (VkResult result = vkCreateImage(*device, &createImageInfo, _device->getAllocationCallbacks(), &_image); result != VK_SUCCESS)
+    {
+        throw Exception{"Error: Failed to create vkImage.", result};
+    }
 }
 
 Image::~Image()
 {
+    if (_deviceMemory)
+    {
+        _deviceMemory->release(_memoryOffset, 0); // TODO, we don't locally have a size allocated
+    }
+
     if (_image)
     {
-        vkDestroyImage(*_device, _image, _allocator);
+        vkDestroyImage(*_device, _image, _device->getAllocationCallbacks());
     }
 }
 
-Image::Result Image::create(Device* device, const VkImageCreateInfo& createImageInfo, AllocationCallbacks* allocator)
+VkMemoryRequirements Image::getMemoryRequirements() const
 {
-    if (!device)
-    {
-        return Result("Error: vsg::Image::create(...) failed to create vkImage, undefined Device.", VK_ERROR_INVALID_EXTERNAL_HANDLE);
-    }
-
-    VkImage image;
-    VkResult result = vkCreateImage(*device, &createImageInfo, allocator, &image);
-    if (result == VK_SUCCESS)
-    {
-        return Result(new Image(image, device, allocator));
-    }
-    else
-    {
-        return Result("Error: Failed to create vkImage.", result);
-    }
-}
-
-ImageMemoryBarrier::ImageMemoryBarrier(VkAccessFlags in_srcAccessMask, VkAccessFlags in_destAccessMask,
-                                       VkImageLayout in_oldLayout, VkImageLayout in_newLayout,
-                                       Image* in_image) :
-    VkImageMemoryBarrier{},
-    _image(in_image)
-{
-    sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    oldLayout = in_oldLayout;
-    newLayout = in_newLayout;
-    srcAccessMask = in_srcAccessMask;
-    dstAccessMask = in_destAccessMask;
-    srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    image = *in_image;
-    subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    subresourceRange.baseMipLevel = 0;
-    subresourceRange.levelCount = 1;
-    subresourceRange.baseArrayLayer = 0;
-    subresourceRange.layerCount = 1;
-}
-
-ImageMemoryBarrier::~ImageMemoryBarrier()
-{
-}
-
-void ImageMemoryBarrier::cmdPiplineBarrier(VkCommandBuffer commandBuffer, VkPipelineStageFlags sourceStage, VkPipelineStageFlags destinationStage)
-{
-    vkCmdPipelineBarrier(commandBuffer,
-                         sourceStage, destinationStage,
-                         0,
-                         0, nullptr,
-                         0, nullptr,
-                         1, static_cast<VkImageMemoryBarrier*>(this));
+    VkMemoryRequirements memRequirements;
+    vkGetImageMemoryRequirements(*_device, _image, &memRequirements);
+    return memRequirements;
 }

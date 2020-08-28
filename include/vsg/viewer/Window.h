@@ -12,8 +12,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-#include <any>
-
 #include <vsg/ui/UIEvent.h>
 
 #include <vsg/vk/CommandBuffer.h>
@@ -21,113 +19,109 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <vsg/vk/DeviceMemory.h>
 #include <vsg/vk/Framebuffer.h>
 #include <vsg/vk/Semaphore.h>
-#include <vsg/vk/Stage.h>
+
+#include <vsg/core/ref_ptr.h>
+#include <vsg/viewer/WindowTraits.h>
 
 namespace vsg
 {
-
     class VSG_DECLSPEC Window : public Inherit<Object, Window>
     {
     public:
         Window(const Window&) = delete;
         Window& operator=(const Window&) = delete;
 
-        class Traits : public Inherit<Object, Traits>
-        {
-        public:
-            Traits() {}
-            Traits(const Traits&) = delete;
-            Traits& operator=(const Traits&) = delete;
+        static ref_ptr<Window> create(vsg::ref_ptr<WindowTraits> traits);
 
-            Traits(int32_t in_x, int32_t in_y, uint32_t in_width, uint32_t in_height) :
-                x(in_x),
-                y(in_y),
-                width(in_width),
-                height(in_height) {}
-
-            Traits(uint32_t in_width, uint32_t in_height) :
-                width(in_width),
-                height(in_height) {}
-
-            int32_t x = 0;
-            int32_t y = 0;
-            uint32_t width = 1280;
-            uint32_t height = 1024;
-
-            bool fullscreen = false;
-
-            uint32_t screenNum = 0;
-
-            std::string windowClass = "vsg::Window";
-            std::string windowTitle = "vsg window";
-
-            bool decoration = true;
-            bool hdpi = true;
-
-            // X11 hint of whether to ignore the Window managers redirection of window size/position
-            bool overrideRedirect = false;
-
-            bool debugLayer = false;
-            bool apiDumpLayer = false;
-
-            SwapchainPreferences swapchainPreferences;
-
-            Window* shareWindow = nullptr;
-
-            AllocationCallbacks* allocator = nullptr;
-
-            std::any nativeHandle;
-            void* nativeWindow;
-
-        protected:
-            virtual ~Traits() {}
-        };
-
-        using Result = vsg::Result<Window, VkResult, VK_SUCCESS>;
-        static Result create(vsg::ref_ptr<Traits> traits);
-
-        // for backward compatibility
-        static Result create(uint32_t width, uint32_t height, bool debugLayer = false, bool apiDumpLayer = false, vsg::Window* shareWindow = nullptr, vsg::AllocationCallbacks* allocator = nullptr);
-        static Result create(vsg::ref_ptr<Traits> traits, bool debugLayer, bool apiDumpLayer = false, vsg::AllocationCallbacks* allocator = nullptr);
-
-        static vsg::Names getInstanceExtensions();
+        virtual const char* instanceExtensionSurfaceName() const = 0;
 
         virtual bool valid() const { return false; }
 
-        virtual bool pollEvents(Events& /*events*/) { return false; }
+        virtual bool visible() const { return valid(); }
+
+        virtual bool pollEvents(UIEvents& /*events*/) { return false; }
 
         virtual bool resized() const { return false; }
         virtual void resize() {}
 
-        using Stages = std::vector<ref_ptr<Stage>>;
+        WindowTraits* traits() { return _traits.get(); }
+        const WindowTraits* traits() const { return _traits.get(); }
 
-        void addStage(ref_ptr<Stage> stage) { _stages.push_back(stage); }
-
-        Stages& stages() { return _stages; }
-        const Stages& stages() const { return _stages; }
-
-        const VkExtent2D& extent2D() { return _extent2D; }
+        const VkExtent2D& extent2D() const { return _extent2D; }
 
         VkClearColorValue& clearColor() { return _clearColor; }
         const VkClearColorValue& clearColor() const { return _clearColor; }
 
-        Instance* instance() { return _instance; }
-        const Instance* instance() const { return _instance; }
+        VkSurfaceFormatKHR surfaceFormat()
+        {
+            if (!_device) _initDevice();
+            return _imageFormat;
+        }
 
-        PhysicalDevice* physicalDevice() { return _physicalDevice; }
-        const PhysicalDevice* physicalDevice() const { return _physicalDevice; }
+        VkFormat depthFormat()
+        {
+            if (!_device) _initDevice();
+            return _depthFormat;
+        }
 
-        Device* device() { return _device; }
-        const Device* device() const { return _device; }
+        VkSampleCountFlagBits framebufferSamples() const { return _framebufferSamples; }
 
-        Surface* surface() { return _surface; }
-        const Surface* surface() const { return _surface; }
+        Instance* getInstance() { return _instance; }
+        Instance* getOrCreateInstance()
+        {
+            if (!_instance) _initInstance();
+            return _instance;
+        }
 
-        RenderPass* renderPass() { return _renderPass; }
-        const RenderPass* renderPass() const { return _renderPass; }
+        Surface* getSurface() { return _surface; }
+        Surface* getOrCreateSurface()
+        {
+            if (!_surface) _initSurface();
+            return _surface;
+        }
 
-        Swapchain* swapchain() { return _swapchain; }
-        const Swapchain* swapchain() const { return _swapchain; }
+        Device* getDevice() { return _device; }
+        Device* getOrCreateDevice()
+        {
+            if (!_device) _initDevice();
+            return _device;
+        }
+
+        PhysicalDevice* getPhysicalDevice() { return _physicalDevice; }
+        PhysicalDevice* getOrCreatePhysicalDevice()
+        {
+            if (!_physicalDevice) _initDevice();
+            return _physicalDevice;
+        }
+
+        void setRenderPass(RenderPass* renderPass) { _renderPass = renderPass; }
+        RenderPass* getRenderPass() { return _renderPass; }
+        RenderPass* getOrCreateRenderPass()
+        {
+            if (!_renderPass) _initRenderPass();
+            return _renderPass;
+        }
+
+        Swapchain* getSwapchain() { return _swapchain; }
+        Swapchain* getOrCreateSwapchain()
+        {
+            if (!_swapchain) _initSwapchain();
+            return _swapchain;
+        }
+
+        Image* getDepthImage() { return _depthImage; }
+        Image* getOrCreateDepthImage()
+        {
+            if (!_depthImage) _initSwapchain();
+            return _depthImage;
+        }
+
+        ImageView* getDepthImageView() { return _depthImageView; }
+        ImageView* getOrCreateDepthImageView()
+        {
+            if (!_depthImageView) _initSwapchain();
+            return _depthImageView;
+        }
 
         size_t numFrames() const { return _frames.size(); }
 
@@ -137,65 +131,50 @@ namespace vsg
         Framebuffer* framebuffer(size_t i) { return _frames[i].framebuffer; }
         const Framebuffer* framebuffer(size_t i) const { return _frames[i].framebuffer; }
 
-        CommandPool* commandPool(size_t i) { return _frames[i].commandPool; }
-        const CommandPool* commandPool(size_t i) const { return _frames[i].commandPool; }
+        /// call vkAquireNextImageKHR to find the next imageIndex of the swapchain images/framebuffers
+        VkResult acquireNextImage(uint64_t timeout = std::numeric_limits<uint64_t>::max());
 
-        CommandBuffer* commandBuffer(size_t i) { return _frames[i].commandBuffer; }
-        const CommandBuffer* commandBuffer(size_t i) const { return _frames[i].commandBuffer; }
-
-        VkResult acquireNextImage(uint64_t timeout, VkSemaphore samaphore, VkFence fence)
-        {
-            return vkAcquireNextImageKHR(*_device, *_swapchain, timeout, samaphore, fence, &_nextImageIndex);
-        }
-
-        VkResult acquireNextImage(uint64_t timeout = std::numeric_limits<uint64_t>::max())
-        {
-            return vkAcquireNextImageKHR(*_device, *_swapchain, timeout, *(_frames[_nextImageIndex].imageAvailableSemaphore), VK_NULL_HANDLE, &_nextImageIndex);
-        }
-
-        uint32_t nextImageIndex() const { return _nextImageIndex; }
-
-        void advanceNextImageIndex() { _nextImageIndex = (_nextImageIndex + 1) % _frames.size(); }
+        /// get the image index for specified relative frame index, a 0 value is the current frame being rendered, 1 is the previous frame, 2 is the previous frame that.
+        size_t imageIndex(size_t relativeFrameIndex = 0) const { return relativeFrameIndex < _indices.size() ? _indices[relativeFrameIndex] : _indices.size(); }
 
         bool debugLayersEnabled() const { return _traits->debugLayer; }
 
-        void populateCommandBuffers(uint32_t index);
-
         struct Frame
         {
-            // do we need a imageAvailableSemaphore per Frame? Probably..
-            ref_ptr<Semaphore> imageAvailableSemaphore;
-
             ref_ptr<ImageView> imageView;
             ref_ptr<Framebuffer> framebuffer;
-
-            // should we have multiple commandPool and commandBuffer?
-            ref_ptr<CommandPool> commandPool;
-            ref_ptr<CommandBuffer> commandBuffer;
-
-            bool checkCommandsCompletedFence = false;
-            ref_ptr<Fence> commandsCompletedFence;
+            ref_ptr<Semaphore> imageAvailableSemaphore;
         };
 
         using Frames = std::vector<Frame>;
 
-        Frame& frame(uint32_t i) { return _frames[i]; }
+        Frame& frame(size_t i) { return _frames[i]; }
         Frames& frames() { return _frames; }
 
     protected:
-        Window(vsg::ref_ptr<vsg::Window::Traits> traits, vsg::AllocationCallbacks* allocator);
+        Window(ref_ptr<WindowTraits> traits);
 
         virtual ~Window();
 
-        virtual void clear();
-        void share(const Window& window);
-        void initaliseDevice();
-        void buildSwapchain(uint32_t width, uint32_t height);
+        virtual void _initSurface() = 0;
+        void _initFormats();
+        void _initInstance();
+        void _initDevice();
+        void _initRenderPass();
+        void _initSwapchain();
 
-        ref_ptr<Traits> _traits;
+        virtual void clear();
+        void share(Window& window);
+        void buildSwapchain();
+
+        ref_ptr<WindowTraits> _traits;
 
         VkExtent2D _extent2D;
         VkClearColorValue _clearColor;
+        VkSurfaceFormatKHR _imageFormat;
+        VkFormat _depthFormat;
+
+        VkSampleCountFlagBits _framebufferSamples;
 
         ref_ptr<Instance> _instance;
         ref_ptr<PhysicalDevice> _physicalDevice;
@@ -207,12 +186,17 @@ namespace vsg
         ref_ptr<DeviceMemory> _depthImageMemory;
         ref_ptr<ImageView> _depthImageView;
 
-        ref_ptr<Semaphore> _imageAvailableSemaphore;
+        // only used when multisampling is required
+        ref_ptr<Image> _multisampleImage;
+        ref_ptr<ImageView> _multisampleImageView;
+
+        ref_ptr<Semaphore> _availableSemaphore;
 
         Frames _frames;
-        uint32_t _nextImageIndex;
-
-        Stages _stages;
+        std::vector<size_t> _indices;
     };
+    VSG_type_name(vsg::Window);
+
+    using Windows = std::vector<ref_ptr<Window>>;
 
 } // namespace vsg

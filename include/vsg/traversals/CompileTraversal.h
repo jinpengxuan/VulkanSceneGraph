@@ -12,34 +12,81 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
-#include <deque>
-#include <memory>
-
 #include <vsg/core/Object.h>
-
 #include <vsg/nodes/Group.h>
-
+#include <vsg/state/Descriptor.h>
+#include <vsg/state/ResourceHints.h>
+#include <vsg/viewer/Window.h>
 #include <vsg/vk/BufferData.h>
 #include <vsg/vk/CommandPool.h>
 #include <vsg/vk/Context.h>
 #include <vsg/vk/DescriptorPool.h>
 #include <vsg/vk/Fence.h>
-#include <vsg/vk/GraphicsPipeline.h>
+
+#include <map>
+#include <set>
 
 namespace vsg
 {
-    class VSG_DECLSPEC CompileTraversal : public Visitor
+    class CollectDescriptorStats : public Inherit<ConstVisitor, CollectDescriptorStats>
+    {
+    public:
+        using Descriptors = std::set<const Descriptor*>;
+        using DescriptorSets = std::set<const DescriptorSet*>;
+        using DescriptorTypeMap = std::map<VkDescriptorType, uint32_t>;
+
+        using ConstVisitor::apply;
+
+        bool checkForResourceHints(const Object& object);
+
+        void apply(const Object& object) override;
+        void apply(const ResourceHints& resourceHints) override;
+        void apply(const Node& node) override;
+        void apply(const StateGroup& stategroup) override;
+        void apply(const StateCommand& stateCommand) override;
+        void apply(const DescriptorSet& descriptorSet) override;
+        void apply(const Descriptor& descriptor) override;
+        void apply(const PagedLOD& plod) override;
+
+        uint32_t computeNumDescriptorSets() const;
+
+        DescriptorPoolSizes computeDescriptorPoolSizes() const;
+
+        Descriptors descriptors;
+        DescriptorSets descriptorSets;
+        DescriptorTypeMap descriptorTypeMap;
+        uint32_t maxSlot = 0;
+        uint32_t externalNumDescriptorSets = 0;
+        bool containsPagedLOD = false;
+
+    protected:
+        uint32_t _numResourceHintsAbove = 0;
+    };
+    VSG_type_name(vsg::CollectDescriptorStats);
+
+    class VSG_DECLSPEC CompileTraversal : public Inherit<Visitor, CompileTraversal>
     {
     public:
         explicit CompileTraversal(Device* in_device, BufferPreferences bufferPreferences = {});
+        explicit CompileTraversal(Window* window, ViewportState* viewport = nullptr, BufferPreferences bufferPreferences = {});
+        CompileTraversal(const CompileTraversal& ct);
         ~CompileTraversal();
 
-        void apply(Object& object);
-        void apply(Command& command);
-        void apply(Commands& commands);
-        void apply(StateGroup& stateGroup);
-        void apply(Geometry& geometry);
+        void apply(Object& object) override;
+        void apply(Command& command) override;
+        void apply(Commands& commands) override;
+        void apply(StateGroup& stateGroup) override;
+        void apply(Geometry& geometry) override;
+        void apply(CommandGraph& commandGraph) override;
+        void apply(RenderGraph& renderGraph) override;
+
+        void compile(Object* object);
+
+        ref_ptr<Fence> fence;
+        ref_ptr<Semaphore> semaphore;
 
         Context context;
     };
+    VSG_type_name(vsg::CompileTraversal);
+
 } // namespace vsg

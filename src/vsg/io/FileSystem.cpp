@@ -15,10 +15,14 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #if defined(WIN32) && !defined(__CYGWIN__)
 #    include <cstdlib>
+#    include <direct.h>
 #    include <io.h>
 #else
+#    include <sys/stat.h>
 #    include <unistd.h>
 #endif
+
+#include <iostream>
 
 using namespace vsg;
 
@@ -79,11 +83,24 @@ bool vsg::fileExists(const Path& path)
 #endif
 }
 
+Path vsg::filePath(const Path& path)
+{
+    std::string::size_type slash = path.find_last_of(PATH_SEPARATORS);
+    if (slash != std::string::npos)
+    {
+        return path.substr(0, slash);
+    }
+    else
+    {
+        return Path();
+    }
+}
+
 Path vsg::fileExtension(const Path& path)
 {
     std::string::size_type dot = path.find_last_of('.');
     std::string::size_type slash = path.find_last_of(PATH_SEPARATORS);
-    if (dot == std::string::npos || (slash != std::string::npos && dot < slash)) return Path{};
+    if (dot == std::string::npos || (slash != std::string::npos && dot < slash)) return Path();
     return path.substr(dot + 1);
 }
 
@@ -105,6 +122,18 @@ Path vsg::simpleFilename(const Path& path)
         else
             return path.substr(0, dot);
     }
+}
+
+Path vsg::removeExtension(const Path& path)
+{
+    std::string::size_type dot = path.find_last_of('.');
+    std::string::size_type slash = path.find_last_of(PATH_SEPARATORS);
+    if (dot == std::string::npos || (slash != std::string::npos && dot < slash))
+        return path;
+    else if (dot > 1)
+        return path.substr(0, dot);
+    else
+        return Path();
 }
 
 Path vsg::concatPaths(const Path& left, const Path& right)
@@ -152,4 +181,42 @@ Path vsg::findFile(const Path& filename, const Options* options)
     {
         return fileExists(filename) ? filename : Path();
     }
+}
+
+bool vsg::makeDirectory(const Path& path)
+{
+    std::vector<vsg::Path> directoriesToCreate;
+    Path trimmed_path = path;
+    while (!trimmed_path.empty() && !vsg::fileExists(trimmed_path))
+    {
+        directoriesToCreate.push_back(trimmed_path);
+        trimmed_path = vsg::filePath(trimmed_path);
+    }
+
+    for (auto itr = directoriesToCreate.rbegin(); itr != directoriesToCreate.rend(); ++itr)
+    {
+        vsg::Path directory_to_create = *itr;
+
+        if (directory_to_create.size() == 2 && directory_to_create[1] == ':')
+        {
+            // ignore a C: style drive prefixes
+            continue;
+        }
+
+#if defined(WIN32) && !defined(__CYGWIN__)
+        if (int status = _mkdir(directory_to_create.c_str()); status != 0)
+        {
+            std::cerr << "   _mkdir(" << directory_to_create << ") failed. status = " << status << std::endl;
+            return false;
+        }
+#else
+        if (int status = mkdir(directory_to_create.c_str(), 0755); status != 0)
+        {
+            std::cerr << "   mkdir(" << directory_to_create << ") failed. status = " << status << std::endl;
+            return false;
+        }
+#endif
+    }
+
+    return true;
 }

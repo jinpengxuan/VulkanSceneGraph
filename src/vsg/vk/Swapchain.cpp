@@ -10,11 +10,12 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/core/Exception.h>
+#include <vsg/io/Options.h>
+#include <vsg/viewer/Window.h>
 #include <vsg/vk/Device.h>
 #include <vsg/vk/Surface.h>
 #include <vsg/vk/Swapchain.h>
-
-#include <vsg/viewer/Window.h>
 
 #include <algorithm>
 #include <iostream>
@@ -123,35 +124,31 @@ VkPresentModeKHR vsg::selectSwapPresentMode(const SwapChainSupportDetails& detai
     VK_PRESENT_MODE_FIFO_RELAXED_KHR. This is for applications that generally render/present a new frame every refresh cycle, but are occasionally late. In this case (perhaps because of stuttering/latency concerns), they want the late image to be immediately displayed, even though that may mean some tearing.
 
     VK_PRESENT_MODE_MAILBOX_KHR. I'm guessing that this is for applications that generally render/present a new frame every refresh cycle, but are occasionally early. In this case, they want the new image to be displayed instead of the previously-queued-for-presentation image that has not yet been displayed.
-**/
+    **/
 }
 
-Swapchain::Swapchain(VkSwapchainKHR swapchain, Device* device, Surface* surface, AllocationCallbacks* allocator) :
-    _device(device),
-    _surface(surface),
-    _swapchain(swapchain),
-    _allocator(allocator)
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// SwapchainImage
+//
+SwapchainImage::SwapchainImage(VkImage image, Device* device) :
+    Inherit(image, device)
 {
 }
 
-Swapchain::~Swapchain()
+SwapchainImage::~SwapchainImage()
 {
-    _imageViews.clear();
-
-    if (_swapchain)
-    {
-        //std::cout << "Calling vkDestroySwapchainKHR(..)" << std::endl;
-        vkDestroySwapchainKHR(*_device, _swapchain, _allocator);
-    }
+    _deviceMemory = nullptr;
+    _image = VK_NULL_HANDLE;
 }
 
-Swapchain::Result Swapchain::create(PhysicalDevice* physicalDevice, Device* device, Surface* surface, uint32_t width, uint32_t height, SwapchainPreferences& preferences, AllocationCallbacks* allocator)
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// Swapchain
+//
+Swapchain::Swapchain(PhysicalDevice* physicalDevice, Device* device, Surface* surface, uint32_t width, uint32_t height, SwapchainPreferences& preferences):
+    _device(device)
 {
-    if (!physicalDevice || !device || !surface)
-    {
-        return Swapchain::Result("Error: vsg::Swapchain::create(...) failed to create swapchain, undefined inputs.", VK_ERROR_INVALID_EXTERNAL_HANDLE);
-    }
-
     SwapChainSupportDetails details = querySwapChainSupport(*physicalDevice, *surface);
 
     VkSurfaceFormatKHR surfaceFormat = selectSwapSurfaceFormat(details, preferences.surfaceFormat);
@@ -182,11 +179,12 @@ Swapchain::Result Swapchain::create(PhysicalDevice* physicalDevice, Device* devi
     createInfo.imageColorSpace = surfaceFormat.colorSpace;
     createInfo.imageExtent = extent;
     createInfo.imageArrayLayers = 1;
-    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    createInfo.imageUsage = preferences.imageUsage;
 
-    if (physicalDevice->getGraphicsFamily() != physicalDevice->getPresentFamily())
+    auto [graphicsFamily, presentFamily] = physicalDevice->getQueueFamily(VK_QUEUE_GRAPHICS_BIT, surface);
+    if (graphicsFamily != presentFamily)
     {
-        uint32_t queueFamilyIndices[] = {uint32_t(physicalDevice->getGraphicsFamily()), uint32_t(physicalDevice->getPresentFamily())};
+        uint32_t queueFamilyIndices[] = {uint32_t(graphicsFamily), uint32_t(presentFamily)};
         createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
         createInfo.queueFamilyIndexCount = 2;
         createInfo.pQueueFamilyIndices = queueFamilyIndices;
@@ -206,16 +204,18 @@ Swapchain::Result Swapchain::create(PhysicalDevice* physicalDevice, Device* devi
     createInfo.pNext = nullptr;
 
     VkSwapchainKHR swapchain;
-    VkResult result = vkCreateSwapchainKHR(*device, &createInfo, allocator, &swapchain);
+    VkResult result = vkCreateSwapchainKHR(*device, &createInfo, _device->getAllocationCallbacks(), &swapchain);
     if (result != VK_SUCCESS)
     {
-        return Result("Error: Failed to create swap chain.", result);
+        throw Exception{"Error: Failed to create swap chain.", result};
     }
 
-    ref_ptr<Swapchain> sw(new Swapchain(swapchain, device, surface));
+    // assign data to this Swapchain object
+    _surface = surface;
+    _swapchain = swapchain;
 
-    sw->_format = surfaceFormat.format;
-    sw->_extent = extent;
+    _format = surfaceFormat.format;
+    _extent = extent;
 
     // create the ImageViews
     vkGetSwapchainImagesKHR(*device, swapchain, &imageCount, nullptr);
@@ -224,9 +224,25 @@ Swapchain::Result Swapchain::create(PhysicalDevice* physicalDevice, Device* devi
 
     for (std::size_t i = 0; i < images.size(); ++i)
     {
-        ref_ptr<ImageView> view = ImageView::create(device, images[i], VK_IMAGE_VIEW_TYPE_2D, surfaceFormat.format, VK_IMAGE_ASPECT_COLOR_BIT, allocator);
-        if (view) sw->getImageViews().push_back(view);
+        ref_ptr<ImageView> view = ImageView::create(device, new SwapchainImage(images[i], device), VK_IMAGE_VIEW_TYPE_2D, surfaceFormat.format, VK_IMAGE_ASPECT_COLOR_BIT);
+        if (view) getImageViews().push_back(view);
     }
+}
 
-    return Result(sw);
+Swapchain::~Swapchain()
+{
+    _imageViews.clear();
+
+    if (_swapchain)
+    {
+        //std::cout << "Calling vkDestroySwapchainKHR(..)" << std::endl;
+        vkDestroySwapchainKHR(*_device, _swapchain, _device->getAllocationCallbacks());
+    }
+}
+
+VkResult Swapchain::acquireNextImage(uint64_t timeout, ref_ptr<Semaphore> semaphore, ref_ptr<Fence> fence, uint32_t& imageIndex)
+{
+    VkSemaphore vk_semaphore = semaphore ? semaphore->vk() : VK_NULL_HANDLE;
+    VkFence vk_fence = fence ? fence->vk() : VK_NULL_HANDLE;
+    return vkAcquireNextImageKHR(*_device, _swapchain, timeout, vk_semaphore, vk_fence, &imageIndex);
 }

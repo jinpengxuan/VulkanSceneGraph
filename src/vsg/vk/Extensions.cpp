@@ -10,6 +10,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/io/Options.h>
 #include <vsg/vk/Extensions.h>
 
 #include <algorithm>
@@ -58,4 +59,29 @@ bool vsg::isExtensionListSupported(const Names& extensionList)
         if (std::find_if(extProps.begin(), extProps.end(), compare) == extProps.end()) return false;
     }
     return true;
+}
+
+typedef std::map<Device*, ref_ptr<Extensions>> BufferedExtensions;
+static BufferedExtensions s_extensions;
+
+Extensions* Extensions::Get(Device* device, bool createIfNotInitalized)
+{
+    if (!s_extensions[device] && createIfNotInitalized)
+        s_extensions[device] = new Extensions(device);
+
+    return s_extensions[device].get();
+}
+
+Extensions::Extensions(Device* device)
+{
+    // VK_NV_ray_tracing
+    vkCreateAccelerationStructureNV = reinterpret_cast<PFN_vkCreateAccelerationStructureNV>(vkGetDeviceProcAddr(*device, "vkCreateAccelerationStructureNV"));
+    vkDestroyAccelerationStructureNV = reinterpret_cast<PFN_vkDestroyAccelerationStructureNV>(vkGetDeviceProcAddr(*device, "vkDestroyAccelerationStructureNV"));
+    vkBindAccelerationStructureMemoryNV = reinterpret_cast<PFN_vkBindAccelerationStructureMemoryNV>(vkGetDeviceProcAddr(*device, "vkBindAccelerationStructureMemoryNV"));
+    vkGetAccelerationStructureHandleNV = reinterpret_cast<PFN_vkGetAccelerationStructureHandleNV>(vkGetDeviceProcAddr(*device, "vkGetAccelerationStructureHandleNV"));
+    vkGetAccelerationStructureMemoryRequirementsNV = reinterpret_cast<PFN_vkGetAccelerationStructureMemoryRequirementsNV>(vkGetDeviceProcAddr(*device, "vkGetAccelerationStructureMemoryRequirementsNV"));
+    vkCmdBuildAccelerationStructureNV = reinterpret_cast<PFN_vkCmdBuildAccelerationStructureNV>(vkGetDeviceProcAddr(*device, "vkCmdBuildAccelerationStructureNV"));
+    vkCreateRayTracingPipelinesNV = reinterpret_cast<PFN_vkCreateRayTracingPipelinesNV>(vkGetDeviceProcAddr(*device, "vkCreateRayTracingPipelinesNV"));
+    vkGetRayTracingShaderGroupHandlesNV = reinterpret_cast<PFN_vkGetRayTracingShaderGroupHandlesNV>(vkGetDeviceProcAddr(*device, "vkGetRayTracingShaderGroupHandlesNV"));
+    vkCmdTraceRaysNV = reinterpret_cast<PFN_vkCmdTraceRaysNV>(vkGetDeviceProcAddr(*device, "vkCmdTraceRaysNV"));
 }

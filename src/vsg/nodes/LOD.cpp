@@ -10,6 +10,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </editor-fold> */
 
+#include <vsg/io/Options.h>
 #include <vsg/io/stream.h>
 #include <vsg/nodes/LOD.h>
 
@@ -31,10 +32,10 @@ void LOD::read(Input& input)
     input.read("Bound", _bound);
 
     _children.resize(input.readValue<uint32_t>("NumChildren"));
-    for (auto& lodChild : _children)
+    for (auto& child : _children)
     {
-        input.read("MinimumScreenHeightRatio", lodChild.minimumScreenHeightRatio);
-        lodChild.child = input.readObject<Node>("Child");
+        input.read("MinimumScreenHeightRatio", child.minimumScreenHeightRatio);
+        input.readObject("Child", child.node);
     }
 }
 
@@ -45,9 +46,9 @@ void LOD::write(Output& output) const
     output.write("Bound", _bound);
 
     output.writeValue<uint32_t>("NumChildren", _children.size());
-    for (auto& lodChild : _children)
+    for (auto& child : _children)
     {
-        output.write("MinimumScreenHeightRatio", lodChild.minimumScreenHeightRatio);
-        output.writeObject("Child", lodChild.child);
+        output.write("MinimumScreenHeightRatio", child.minimumScreenHeightRatio);
+        output.writeObject("Child", child.node);
     }
 }

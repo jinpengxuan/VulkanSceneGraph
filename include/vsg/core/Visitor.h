@@ -29,6 +29,7 @@ namespace vsg
     class Group;
     class QuadGroup;
     class LOD;
+    class PagedLOD;
     class StateGroup;
     class CullGroup;
     class CullNode;
@@ -43,6 +44,7 @@ namespace vsg
     class RenderPass;
     class BindDescriptorSet;
     class BindDescriptorSets;
+    class Descriptor;
     class DescriptorSet;
     class BindVertexBuffers;
     class BindIndexBuffer;
@@ -56,11 +58,14 @@ namespace vsg
     class GraphicsPipelineState;
     class VertexInputState;
     class InputAssemblyState;
+    class TessellationState;
     class ViewportState;
     class RasterizationState;
     class MultisampleState;
     class DepthStencilState;
     class ColorBlendState;
+    class DynamicState;
+    class ResourceHints;
 
     // forward declare ui events classes
     class UIEvent;
@@ -79,8 +84,13 @@ namespace vsg
     class TouchDownEvent;
     class TouchUpEvent;
     class TouchMoveEvent;
+    class ScrollWheelEvent;
     class TerminateEvent;
     class FrameEvent;
+
+    // forward declare viewer classes
+    class CommandGraph;
+    class RenderGraph;
 
     // forward declare general classes
     class FrameStamp;
@@ -93,6 +103,7 @@ namespace vsg
         virtual void apply(Object&);
         virtual void apply(Objects&);
         virtual void apply(External&);
+        virtual void apply(Data&);
 
         // Values
         virtual void apply(stringValue&);
@@ -114,9 +125,24 @@ namespace vsg
         virtual void apply(dvec2Array&);
         virtual void apply(dvec3Array&);
         virtual void apply(dvec4Array&);
+        virtual void apply(bvec2Array&);
+        virtual void apply(bvec3Array&);
+        virtual void apply(bvec4Array&);
+        virtual void apply(svec2Array&);
+        virtual void apply(svec3Array&);
+        virtual void apply(svec4Array&);
+        virtual void apply(ivec2Array&);
+        virtual void apply(ivec3Array&);
+        virtual void apply(ivec4Array&);
         virtual void apply(ubvec2Array&);
         virtual void apply(ubvec3Array&);
         virtual void apply(ubvec4Array&);
+        virtual void apply(usvec2Array&);
+        virtual void apply(usvec3Array&);
+        virtual void apply(usvec4Array&);
+        virtual void apply(uivec2Array&);
+        virtual void apply(uivec3Array&);
+        virtual void apply(uivec4Array&);
         virtual void apply(mat4Array&);
         virtual void apply(dmat4Array&);
         virtual void apply(block64Array&);
@@ -134,9 +160,24 @@ namespace vsg
         virtual void apply(dvec2Array2D&);
         virtual void apply(dvec3Array2D&);
         virtual void apply(dvec4Array2D&);
+        virtual void apply(bvec2Array2D&);
+        virtual void apply(bvec3Array2D&);
+        virtual void apply(bvec4Array2D&);
+        virtual void apply(svec2Array2D&);
+        virtual void apply(svec3Array2D&);
+        virtual void apply(svec4Array2D&);
+        virtual void apply(ivec2Array2D&);
+        virtual void apply(ivec3Array2D&);
+        virtual void apply(ivec4Array2D&);
         virtual void apply(ubvec2Array2D&);
         virtual void apply(ubvec3Array2D&);
         virtual void apply(ubvec4Array2D&);
+        virtual void apply(usvec2Array2D&);
+        virtual void apply(usvec3Array2D&);
+        virtual void apply(usvec4Array2D&);
+        virtual void apply(uivec2Array2D&);
+        virtual void apply(uivec3Array2D&);
+        virtual void apply(uivec4Array2D&);
         virtual void apply(block64Array2D&);
         virtual void apply(block128Array2D&);
 
@@ -164,6 +205,7 @@ namespace vsg
         virtual void apply(Group&);
         virtual void apply(QuadGroup&);
         virtual void apply(LOD&);
+        virtual void apply(PagedLOD&);
         virtual void apply(StateGroup&);
         virtual void apply(CullGroup&);
         virtual void apply(CullNode&);
@@ -178,6 +220,7 @@ namespace vsg
         virtual void apply(RenderPass&);
         virtual void apply(BindDescriptorSet&);
         virtual void apply(BindDescriptorSets&);
+        virtual void apply(Descriptor&);
         virtual void apply(DescriptorSet&);
         virtual void apply(BindVertexBuffers&);
         virtual void apply(BindIndexBuffer&);
@@ -189,11 +232,16 @@ namespace vsg
         virtual void apply(ShaderStage&);
         virtual void apply(VertexInputState&);
         virtual void apply(InputAssemblyState&);
+        virtual void apply(TessellationState&);
         virtual void apply(ViewportState&);
         virtual void apply(RasterizationState&);
         virtual void apply(MultisampleState&);
         virtual void apply(DepthStencilState&);
         virtual void apply(ColorBlendState&);
+        virtual void apply(DynamicState&);
+        virtual void apply(ResourceHints&);
+        virtual void apply(Draw&);
+        virtual void apply(DrawIndexed&);
 
         // ui events
         virtual void apply(UIEvent&);
@@ -212,8 +260,13 @@ namespace vsg
         virtual void apply(TouchDownEvent&);
         virtual void apply(TouchUpEvent&);
         virtual void apply(TouchMoveEvent&);
+        virtual void apply(ScrollWheelEvent&);
         virtual void apply(TerminateEvent&);
         virtual void apply(FrameEvent&);
+
+        // viewer class
+        virtual void apply(CommandGraph&);
+        virtual void apply(RenderGraph&);
 
         // general classes
         virtual void apply(FrameStamp&);
